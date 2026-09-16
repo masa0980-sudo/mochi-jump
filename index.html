@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>もちジャンプ</title>
+<style>
+  :root{
+    --bg0:#0c0f1a; --bg1:#1a2140;
+    --accent:#ffb37a; --accent2:#ff8fb3;
+    --line:rgba(255,255,255,.14);
+    --text:#f4f1ea;
+    --good:#7ddba4; --bad:#ff9a92;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;overscroll-behavior:none;}
+  body{
+    background:radial-gradient(120% 120% at 50% 0%,var(--bg1),var(--bg0) 75%);
+    color:var(--text);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Segoe UI",sans-serif;
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
+    user-select:none;
+  }
+  #stage{position:relative;width:min(100vw,620px);height:min(100vh,900px);overflow:hidden;}
+  .screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;}
+  .screen.active{display:flex;}
+
+  /* ===== タイトル ===== */
+  #title{justify-content:center;padding:24px;text-align:center;}
+  .mochiLogo{font-size:clamp(30px,9vw,46px);font-weight:900;letter-spacing:.04em;line-height:1.25;
+    background:linear-gradient(90deg,var(--accent2),var(--accent));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 18px rgba(255,179,122,.35));}
+  .sub{margin-top:8px;font-size:12px;letter-spacing:.28em;color:var(--accent);opacity:.9;}
+  .rule{margin:20px auto 0;max-width:380px;padding:16px 18px;border-radius:14px;
+    background:rgba(255,255,255,.05);border:1px solid var(--line);
+    font-size:13px;line-height:1.9;text-align:left;}
+  .btn{margin-top:22px;cursor:pointer;user-select:none;border:none;
+    padding:15px 46px;font-size:18px;font-weight:800;letter-spacing:.1em;
+    color:#2a1608;border-radius:40px;
+    background:linear-gradient(90deg,var(--accent2),var(--accent));
+    box-shadow:0 0 26px rgba(255,143,179,.4);
+    transition:transform .12s,box-shadow .2s;}
+  .btn:hover{transform:translateY(-2px) scale(1.03);}
+  .btn:active{transform:scale(.97);}
+  .btn.ghost{background:none;color:var(--text);border:1px solid var(--line);
+    box-shadow:none;font-size:13px;padding:10px 22px;letter-spacing:.06em;margin-top:12px;}
+  #playCountLabel{margin-top:16px;font-size:12px;opacity:.55;min-height:14px;}
+
+  /* ===== プレイ ===== */
+  #play{justify-content:flex-start;}
+  #hud{width:100%;display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;font-size:13px;letter-spacing:.04em;position:relative;z-index:5;}
+  #hud .chip{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:10px;
+    padding:6px 12px;font-variant-numeric:tabular-nums;}
+  #hud .chip b{color:var(--accent);}
+  #canvasWrap{position:relative;width:100%;flex:1;min-height:0;}
+  canvas#game{display:block;width:100%;height:100%;touch-action:none;
+    background:linear-gradient(180deg,#26305c 0%,#182140 55%,#10142a 100%);}
+  #touchBar{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;
+    align-items:flex-end;padding:0 16px 18px;pointer-events:none;z-index:6;}
+  .padGroup{display:flex;gap:10px;pointer-events:auto;}
+  .padBtn{width:60px;height:60px;border-radius:18px;background:rgba(255,255,255,.1);
+    border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+    font-size:24px;color:var(--text);backdrop-filter:blur(2px);}
+  .padBtn:active{background:rgba(255,255,255,.22);}
+  #jumpBtn{width:78px;height:78px;border-radius:50%;background:linear-gradient(180deg,var(--accent2),var(--accent));
+    border:none;font-size:14px;font-weight:800;color:#2a1608;pointer-events:auto;
+    box-shadow:0 0 20px rgba(255,143,179,.4);}
+  #jumpBtn:active{transform:scale(.94);}
+  #pauseBtn{background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--text);
+    border-radius:10px;padding:6px 12px;font-size:12px;}
+
+  /* ===== 一時停止 ===== */
+  #pauseOverlay{position:absolute;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
+    background:rgba(8,10,20,.72);backdrop-filter:blur(2px);}
+  #pauseOverlay.show{display:flex;}
+  .pauseCard{background:rgba(26,33,64,.95);border:1px solid var(--line);border-radius:16px;
+    padding:26px 30px;text-align:center;}
+  .pauseCard h2{font-size:18px;margin-bottom:14px;letter-spacing:.06em;}
+
+  /* ===== 結果 ===== */
+  #result{justify-content:center;padding:24px;text-align:center;}
+  #result h2{font-size:26px;letter-spacing:.06em;margin-bottom:6px;}
+  #result h2.clear{color:var(--good);}
+  #resultStats{margin:14px 0 6px;font-size:14px;line-height:2.1;
+    background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:14px;
+    padding:14px 22px;min-width:220px;}
+  #resultStats b{color:var(--accent);font-size:17px;}
+
+  @media (pointer:fine){ #touchBar{display:none;} }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- ================= タイトル ================= -->
+  <section id="title" class="screen active">
+    <div class="mochiLogo">もち<br>ジャンプ</div>
+    <div class="sub">MOCHI JUMP</div>
+    <div class="rule">
+      ← → で移動、ジャンプボタン(または スペース / ↑)で跳ぶ。<br>
+      押しっぱなしで高くジャンプできる。落とし穴に落ちても大丈夫、<br>
+      少し戻ってやり直せる。ゴールの臼(うす)を目指そう。
+    </div>
+    <button class="btn" id="startBtn">はじめる</button>
+    <div id="playCountLabel"></div>
+  </section>
+
+  <!-- ================= プレイ ================= -->
+  <section id="play" class="screen">
+    <div id="hud">
+      <div class="chip">TIME <b id="hudTime">0.0</b></div>
+      <div class="chip">きなこ <b id="hudCoins">0</b>/<span id="hudCoinsMax">0</span></div>
+      <button id="pauseBtn">II 一時停止</button>
+    </div>
+    <div id="canvasWrap">
+      <canvas id="game"></canvas>
+      <div id="touchBar">
+        <div class="padGroup">
+          <div class="padBtn" id="leftBtn">◀</div>
+          <div class="padBtn" id="rightBtn">▶</div>
+        </div>
+        <button id="jumpBtn">JUMP</button>
+      </div>
+      <div id="pauseOverlay">
+        <div class="pauseCard">
+          <h2>一時停止</h2>
+          <button class="btn" id="resumeBtn">再開する</button><br>
+          <button class="btn ghost" id="quitBtn">タイトルへ</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 結果 ================= -->
+  <section id="result" class="screen">
+    <h2 id="resultTitle"></h2>
+    <div id="resultStats"></div>
+    <button class="btn" id="retryBtn">もういちど</button><br>
+    <button class="btn ghost" id="toTitleBtn">タイトルへ</button>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = id => document.getElementById(id);
+
+  /* =========================================================
+     1. Sfx — Web Audio APIで効果音を合成する(音声ファイル不使用)
+     ========================================================= */
+  const Sfx = (function(){
+    let ac = null;
+    function ensure(){ if(!ac){ const AC = window.AudioContext || window.webkitAudioContext; ac = new AC(); } if(ac.state === "suspended") ac.resume(); }
+    function tone(freq, dur, type, gain, glideTo){
+      if(!ac) return;
+      const t0 = ac.currentTime;
+      const osc = ac.createOscillator();
+      const g = ac.createGain();
+      osc.type = type || "sine";
+      osc.frequency.setValueAtTime(freq, t0);
+      if(glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, t0 + dur);
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(gain || 0.18, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      osc.connect(g); g.connect(ac.destination);
+      osc.start(t0); osc.stop(t0 + dur + 0.02);
+    }
+    return {
+      ensure,
+      jump(){ tone(360, 0.16, "sine", 0.16, 620); },
+      land(){ tone(180, 0.09, "sine", 0.14, 90); },
+      coin(){ tone(880, 0.09, "square", 0.10, 1320); },
+      hit(){ tone(140, 0.22, "sawtooth", 0.14, 60); },
+      clear(){ [523,659,784,1047].forEach((f,i)=> setTimeout(()=>tone(f,0.28,"triangle",0.14), i*90)); }
+    };
+  })();
+
+  /* =========================================================
+     2. PlayCounts — 累計プレイ回数（Firestore, カウントのみ）
+          Rhythm_game/tennis-game等の姉妹プロジェクトと同じ方針でSDKを使わず
+          fetch()で完結させる。rythm-game-mo は複数の公開ゲームでプレイ回数の
+          記録先として共有しており、このアプリは gameId "mochi-jump" で
+          1件のドキュメントに記録する。
+     ========================================================= */
+  const PlayCounts = (function(){
+    const PROJECT_ID = "rythm-game-mo";
+    const API_KEY = "AIzaSyBBo4f_LqJ2lfdKu8Q11oeiiYq_O-15LSc";
+    const ROOT = "https://firestore.googleapis.com/v1/projects/" + PROJECT_ID + "/databases/(default)/documents";
+
+    function increment(gameId){
+      const commitUrl = ROOT + ":commit?key=" + API_KEY;
+      const docPath = "projects/" + PROJECT_ID + "/databases/(default)/documents/playCounts/" + encodeURIComponent(gameId);
+      const incrementBody = {
+        writes: [{
+          transform: {
+            document: docPath,
+            fieldTransforms: [{ fieldPath: "count", increment: { integerValue: "1" } }]
+          }
+        }]
+      };
+      const createBody = {
+        writes: [{
+          update: { name: docPath, fields: { count: { integerValue: "1" } } },
+          currentDocument: { exists: false }
+        }]
+      };
+      return fetch(commitUrl, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(incrementBody)
+      }).then(function(res){
+        if(res.ok) return;
+        return fetch(commitUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(createBody) });
+      }).catch(function(e){ console.warn("playCount increment failed:", e); });
+    }
+
+    function fetchCount(gameId){
+      const url = ROOT + "/playCounts/" + encodeURIComponent(gameId) + "?key=" + API_KEY;
+      return fetch(url).then(function(res){
+        if(!res.ok) return null;
+        return res.json();
+      }).then(function(doc){
+        if(!doc || !doc.fields || !doc.fields.count) return null;
+        return parseInt(doc.fields.count.integerValue, 10);
+      }).catch(function(e){ console.warn("playCount fetch failed:", e); return null; });
+    }
+
+    return { increment, fetchCount };
+  })();
+
+  /* =========================================================
+     3. Input — キーボード / タッチを統一する
+     ========================================================= */
+  const Input = (function(){
+    const state = { left:false, right:false, jumpHeld:false, jumpPressed:false };
+    function down(key){
+      if(key === "ArrowLeft" || key === "a") state.left = true;
+      if(key === "ArrowRight" || key === "d") state.right = true;
+      if(key === "ArrowUp" || key === " " || key === "w"){
+        if(!state.jumpHeld) state.jumpPressed = true;
+        state.jumpHeld = true;
+      }
+    }
+    function up(key){
+      if(key === "ArrowLeft" || key === "a") state.left = false;
+      if(key === "ArrowRight" || key === "d") state.right = false;
+      if(key === "ArrowUp" || key === " " || key === "w") state.jumpHeld = false;
+    }
+    window.addEventListener("keydown", function(e){
+      if(["ArrowLeft","ArrowRight","ArrowUp"," "].includes(e.key)) e.preventDefault();
+      down(e.key);
+    });
+    window.addEventListener("keyup", function(e){ up(e.key); });
+
+    function bindHold(el, onDown, onUp){
+      el.addEventListener("pointerdown", function(e){ e.preventDefault(); onDown(); });
+      el.addEventListener("pointerup", onUp);
+      el.addEventListener("pointerleave", onUp);
+      el.addEventListener("pointercancel", onUp);
+    }
+    bindHold($("leftBtn"), ()=>{ state.left = true; }, ()=>{ state.left = false; });
+    bindHold($("rightBtn"), ()=>{ state.right = true; }, ()=>{ state.right = false; });
+    bindHold($("jumpBtn"),
+      ()=>{ if(!state.jumpHeld) state.jumpPressed = true; state.jumpHeld = true; },
+      ()=>{ state.jumpHeld = false; });
+
+    function consumeJumpPressed(){ const v = state.jumpPressed; state.jumpPressed = false; return v; }
+    function reset(){ state.left=false; state.right=false; state.jumpHeld=false; state.jumpPressed=false; }
+    return { state, consumeJumpPressed, reset };
+  })();
+
+  /* =========================================================
+     4. Level — 1ステージぶんの地形・障害物・きなこ(収集物)・ゴール定義
+          座標はワールド座標(px)。groundは「上面だけ乗れる」矩形。
+     ========================================================= */
+  const GROUND_Y = 320;
+  const platforms = [
+    { x:0,    y:GROUND_Y, w:520,  h:40 },
+    { x:600,  y:GROUND_Y, w:340,  h:40 },
+    { x:1000, y:250,      w:170,  h:26 },
+    { x:1230, y:GROUND_Y, w:340,  h:40 },
+    { x:1660, y:GROUND_Y, w:220,  h:40 },
+    { x:2140, y:GROUND_Y, w:420,  h:40 },
+    { x:2640, y:280,      w:150,  h:26 },
+    { x:2860, y:200,      w:400,  h:26 },
+    { x:3400, y:GROUND_Y, w:400,  h:40 }
+  ];
+  // 動く足場: (x0,x1)の間をvxの速さで往復するy固定の足場
+  const movers = [
+    { x:1900, y:280, w:150, h:22, x0:1900, x1:2060, vx:55, dir:1 }
+  ];
+  const spikes = [
+    { x:1740, y:GROUND_Y-18, w:36, h:18 },
+    { x:2320, y:GROUND_Y-18, w:36, h:18 },
+    { x:2360, y:GROUND_Y-18, w:36, h:18 }
+  ];
+  const pits = [ // 見た目と落下判定用(この範囲でground未満なら穴に落ちたとみなす)
+    { x:520,  x1:600 },
+    { x:1170, x1:1230 },
+    { x:1880, x1:2140 },
+    { x:2790, x1:2860 },
+    { x:3260, x1:3400 }
+  ];
+  const coins = [
+    {x:300,y:270},{x:660,y:270},{x:820,y:270},{x:1050,y:200},
+    {x:1300,y:270},{x:1420,y:270},{x:1720,y:250},{x:2200,y:270},
+    {x:2470,y:270},{x:2680,y:220},{x:2920,y:150},{x:3080,y:150},
+    {x:3460,y:270},{x:3600,y:270}
+  ];
+  const GOAL_X = 3720;
+  const LEVEL_W = 3900;
+
+  function resetLevel(){
+    movers.forEach(m => { m.x = m.x0; m.dir = 1; });
+    coins.forEach(c => { c.taken = false; });
+  }
+
+  /* =========================================================
+     5. Game — 物理・当たり判定・カメラ・描画・進行状態
+     ========================================================= */
+  const canvas = $("game");
+  const ctx = canvas.getContext("2d");
+  const VIEW_W = 640, VIEW_H = 420; // 論理解像度。CSSで拡大縮小して表示する
+  function fitCanvas(){
+    const wrap = $("canvasWrap");
+    const scale = Math.min(wrap.clientWidth / VIEW_W, wrap.clientHeight / VIEW_H);
+    canvas.width = VIEW_W; canvas.height = VIEW_H;
+    canvas.style.width = (VIEW_W*scale) + "px";
+    canvas.style.height = (VIEW_H*scale) + "px";
+  }
+  window.addEventListener("resize", fitCanvas);
+
+  const GRAVITY = 0.62, MOVE_ACC = 0.55, MOVE_MAX = 4.4, FRICTION = 0.82;
+  const JUMP_V = -11.2, JUMP_HOLD_ACC = -0.52, JUMP_HOLD_MAX_T = 14;
+  const PLAYER_W = 34, PLAYER_H = 34;
+
+  let player, camX, coinCount, startedAt, running, paused, ended;
+  let lastRespawnX = 30;
+
+  function respawnPointFor(x){
+    // 直前に通過した安全な地面区画の左端(手前寄り)を復帰地点にする
+    let best = 30;
+    platforms.forEach(function(p){
+      if(p.y === GROUND_Y && p.x <= x) best = Math.max(best, Math.min(p.x + 30, x));
+    });
+    return best;
+  }
+
+  function initGame(){
+    resetLevel();
+    player = { x:30, y:GROUND_Y-PLAYER_H, vx:0, vy:0, w:PLAYER_W, h:PLAYER_H,
+      onGround:false, squash:0, facing:1, holdT:0, jumping:false, dead:false, deadT:0 };
+    camX = 0; coinCount = 0; startedAt = performance.now(); running = true; paused = false; ended = false;
+    lastRespawnX = 30;
+    $("hudCoinsMax").textContent = String(coins.length);
+    $("hudCoins").textContent = "0";
+    $("pauseOverlay").classList.remove("show");
+    Input.reset();
+  }
+
+  function aabbTop(a, groundLike){
+    // groundLikeの上面に乗れるかどうかの簡易判定(縦方向のみ、横は重なりで判定)
+    const overlapX = a.x + a.w > groundLike.x && a.x < groundLike.x + groundLike.w;
+    return overlapX;
+  }
+
+  function update(dt){
+    if(!running || paused || ended) return;
+    const t = dt / 16.6667; // 60fps基準の倍率
+
+    // --- 横移動 ---
+    if(Input.state.left){ player.vx -= MOVE_ACC * t; player.facing = -1; }
+    if(Input.state.right){ player.vx += MOVE_ACC * t; player.facing = 1; }
+    if(!Input.state.left && !Input.state.right) player.vx *= Math.pow(FRICTION, t);
+    player.vx = Math.max(-MOVE_MAX, Math.min(MOVE_MAX, player.vx));
+
+    // --- ジャンプ(可変高さ: 押しっぱなしで上昇を少し延長) ---
+    if(Input.consumeJumpPressed() && player.onGround && !player.dead){
+      player.vy = JUMP_V; player.onGround = false; player.jumping = true; player.holdT = 0;
+      Sfx.jump();
+    }
+    if(player.jumping && Input.state.jumpHeld && player.holdT < JUMP_HOLD_MAX_T && player.vy < 0){
+      player.vy += JUMP_HOLD_ACC * t; player.holdT += t;
+    }
+    if(!Input.state.jumpHeld) player.jumping = false;
+
+    // --- 重力 ---
+    player.vy += GRAVITY * t;
+    player.vy = Math.min(player.vy, 16);
+
+    // --- 死亡演出中はゆっくり落ちるだけ ---
+    if(player.dead){
+      player.deadT += t;
+      player.y += 3 * t;
+      if(player.deadT > 26){
+        player.x = lastRespawnX; player.y = GROUND_Y - PLAYER_H; player.vx = 0; player.vy = 0;
+        player.dead = false; player.deadT = 0;
+      }
+      updateCamera(); return;
+    }
+
+    // --- 動く足場を進める ---
+    movers.forEach(function(m){
+      m.x += m.vx * m.dir * t * (1/60) * 60 * (dt/1000) * 0; // placeholder (below is real calc)
+    });
+    movers.forEach(function(m){
+      m.x += m.dir * (m.vx * dt / 1000);
+      if(m.x < m.x0){ m.x = m.x0; m.dir = 1; }
+      if(m.x > m.x1){ m.x = m.x1; m.dir = -1; }
+    });
+
+    // --- 横方向の移動 & 世界端でクランプ ---
+    const prevBottom = player.y + player.h;
+    player.x += player.vx * t;
+    player.x = Math.max(0, Math.min(LEVEL_W - player.w, player.x));
+    player.y += player.vy * t;
+
+    // --- 地面・足場との当たり判定(上から乗る場合のみ) ---
+    player.onGround = false;
+    const allGround = platforms.concat(movers);
+    allGround.forEach(function(g){
+      const newBottom = player.y + player.h;
+      if(aabbTop(player, g) && prevBottom <= g.y + 1 && newBottom >= g.y && player.vy >= 0){
+        player.y = g.y - player.h;
+        if(player.vy > 3.5 && player.squash <= 0) Sfx.land();
+        if(player.vy > 2) player.squash = Math.min(10, player.vy);
+        player.vy = 0; player.onGround = true; player.jumping = false;
+        if(g.vx){ player.x += g.dir * (g.vx * dt / 1000); } // 動く足場に追従
+      }
+    });
+
+    // --- 穴に落ちた ---
+    if(player.y > GROUND_Y + 140 && !player.dead){
+      player.dead = true; player.deadT = 0; player.vx = 0; player.vy = 0;
+      Sfx.hit();
+    }
+
+    // --- とげ判定 ---
+    if(!player.dead){
+      spikes.forEach(function(s){
+        if(player.x + player.w > s.x + 6 && player.x < s.x + s.w - 6 &&
+           player.y + player.h > s.y + 4 && player.y < s.y + s.h){
+          player.dead = true; player.deadT = 0; player.vx = 0; player.vy = -4;
+          Sfx.hit();
+        }
+      });
+    }
+
+    // --- きなこ回収 ---
+    coins.forEach(function(c){
+      if(c.taken) return;
+      const dx = (player.x + player.w/2) - c.x, dy = (player.y + player.h/2) - c.y;
+      if(Math.sqrt(dx*dx + dy*dy) < 26){
+        c.taken = true; coinCount++; $("hudCoins").textContent = String(coinCount);
+        Sfx.coin();
+      }
+    });
+
+    // --- 安全な地面を通過するたび復帰地点を更新 ---
+    if(player.onGround && !player.dead) lastRespawnX = respawnPointFor(player.x);
+
+    // --- squash(着地演出)の減衰 ---
+    if(player.squash > 0) player.squash = Math.max(0, player.squash - 0.6 * t);
+
+    // --- ゴール判定 ---
+    if(player.x + player.w/2 > GOAL_X && !ended){
+      ended = true; running = false;
+      Sfx.clear();
+      showResult(true);
+    }
+
+    updateCamera();
+    $("hudTime").textContent = ((performance.now() - startedAt) / 1000).toFixed(1);
+  }
+
+  function updateCamera(){
+    const target = player.x - VIEW_W * 0.38;
+    camX += (target - camX) * 0.14;
+    camX = Math.max(0, Math.min(LEVEL_W - VIEW_W, camX));
+  }
+
+  function drawMochiUsu(x, y){ // ゴールの臼(うす)
+    ctx.save(); ctx.translate(x - camX, y);
+    ctx.fillStyle = "#5b4636"; ctx.beginPath();
+    ctx.moveTo(-38, 20); ctx.lineTo(38, 20); ctx.lineTo(28, -14); ctx.lineTo(-28, -14); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#f4ece0"; ctx.beginPath(); ctx.ellipse(0, -14, 28, 9, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#ffe27a"; ctx.fillRect(-2, -60, 4, 46);
+    ctx.beginPath(); ctx.moveTo(2,-60); ctx.lineTo(34,-52); ctx.lineTo(2,-44); ctx.closePath();
+    ctx.fillStyle = "#ff8fb3"; ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBg(){
+    // 遠景の星と丘(視差スクロール)
+    ctx.fillStyle = "rgba(255,255,255,.5)";
+    for(let i=0;i<40;i++){
+      const sx = (i*137 - camX*0.15) % (VIEW_W+40);
+      const sy = (i*53) % (VIEW_H*0.6);
+      ctx.globalAlpha = 0.15 + (i%5)*0.1;
+      ctx.fillRect((sx+VIEW_W)%(VIEW_W+40)-20, sy, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawPlatform(p, color){
+    const x = p.x - camX;
+    if(x + p.w < -20 || x > VIEW_W + 20) return;
+    ctx.fillStyle = color || "#f4ece0";
+    ctx.fillRect(x, p.y, p.w, p.h);
+    ctx.fillStyle = "rgba(0,0,0,.15)";
+    ctx.fillRect(x, p.y + p.h - 5, p.w, 5);
+    ctx.fillStyle = "rgba(255,255,255,.5)";
+    ctx.fillRect(x, p.y, p.w, 3);
+  }
+
+  function drawSpike(s){
+    const x = s.x - camX;
+    if(x + s.w < -20 || x > VIEW_W + 20) return;
+    ctx.fillStyle = "#ff6f6f";
+    ctx.beginPath();
+    ctx.moveTo(x, s.y+s.h); ctx.lineTo(x+s.w/2, s.y); ctx.lineTo(x+s.w, s.y+s.h);
+    ctx.closePath(); ctx.fill();
+  }
+
+  function drawCoin(c){
+    if(c.taken) return;
+    const x = c.x - camX;
+    if(x < -20 || x > VIEW_W + 20) return;
+    const bob = Math.sin(performance.now()/260 + c.x) * 3;
+    ctx.fillStyle = "#e8c07a";
+    ctx.beginPath(); ctx.arc(x, c.y + bob, 8, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#a9793a"; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+
+  function drawPlayer(){
+    const x = player.x - camX + player.w/2;
+    const squashY = 1 - Math.min(0.34, player.squash/28);
+    const squashX = 1 + Math.min(0.28, player.squash/34);
+    const bounce = player.onGround ? Math.sin(performance.now()/180) * 1.4 : 0;
+    const y = player.y + player.h/2 + bounce;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(player.facing, 1);
+    ctx.scale(squashX, squashY);
+    // 体
+    ctx.fillStyle = player.dead ? "#c9c2ff" : "#fdfaf3";
+    ctx.beginPath(); ctx.ellipse(0, 4, 19, 17, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#d8c9a8"; ctx.lineWidth = 1.4; ctx.stroke();
+    // ほっぺ
+    ctx.fillStyle = "#ffb0b8";
+    ctx.beginPath(); ctx.ellipse(-9, 6, 3.4, 2.4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(9, 6, 3.4, 2.4, 0, 0, Math.PI*2); ctx.fill();
+    // 目
+    ctx.fillStyle = "#2a2a2a";
+    if(player.dead){
+      ctx.beginPath(); ctx.moveTo(-11,-1); ctx.lineTo(-5,3); ctx.moveTo(-5,-1); ctx.lineTo(-11,3);
+      ctx.moveTo(5,-1); ctx.lineTo(11,3); ctx.moveTo(11,-1); ctx.lineTo(5,3);
+      ctx.strokeStyle = "#2a2a2a"; ctx.lineWidth = 2; ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(-7,-1,2.6,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(7,-1,2.6,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function render(){
+    ctx.clearRect(0,0,VIEW_W,VIEW_H);
+    drawBg();
+    pits.forEach(function(p){
+      const x = p.x - camX, w = p.x1 - p.x;
+      ctx.fillStyle = "#05070f";
+      ctx.fillRect(x, GROUND_Y, w, VIEW_H - GROUND_Y);
+    });
+    platforms.forEach(function(p){ drawPlatform(p); });
+    movers.forEach(function(m){ drawPlatform(m, "#ffd9ea"); });
+    spikes.forEach(drawSpike);
+    coins.forEach(drawCoin);
+    drawMochiUsu(GOAL_X + 40, GROUND_Y);
+    drawPlayer();
+  }
+
+  let rafId = null, lastT = 0;
+  function loop(now){
+    const dt = Math.min(40, now - (lastT || now));
+    lastT = now;
+    update(dt);
+    render();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  /* =========================================================
+     6. 画面遷移 & UIグルー
+     ========================================================= */
+  const SCREENS = ["title","play","result"];
+  function show(id){
+    SCREENS.forEach(function(s){ $(s).classList.toggle("active", s === id); });
+  }
+
+  function startGame(){
+    Sfx.ensure();
+    PlayCounts.increment("mochi-jump");   // START/もういちど 共通、ここ1箇所でカウント
+    show("play");
+    fitCanvas();
+    initGame();
+    if(!rafId) rafId = requestAnimationFrame(loop);
+  }
+
+  function showResult(cleared){
+    show("result");
+    const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
+    $("resultTitle").textContent = cleared ? "ゴール!" : "また挑戦しよう";
+    $("resultTitle").className = cleared ? "clear" : "";
+    $("resultStats").innerHTML =
+      "タイム <b>" + elapsed + "</b> 秒<br>" +
+      "きなこ <b>" + coinCount + "</b> / " + coins.length;
+  }
+
+  $("startBtn").addEventListener("click", startGame);
+  $("retryBtn").addEventListener("click", startGame);
+  $("toTitleBtn").addEventListener("click", function(){
+    running = false; ended = true;
+    show("title");
+  });
+  $("pauseBtn").addEventListener("click", function(){
+    if(!running || ended) return;
+    paused = true; $("pauseOverlay").classList.add("show");
+  });
+  $("resumeBtn").addEventListener("click", function(){
+    paused = false; $("pauseOverlay").classList.remove("show"); lastT = performance.now();
+  });
+  $("quitBtn").addEventListener("click", function(){
+    paused = false; running = false; ended = true;
+    $("pauseOverlay").classList.remove("show");
+    show("title");
+  });
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden && running && !ended && !paused){
+      paused = true; $("pauseOverlay").classList.add("show");
+    }
+  });
+
+  fitCanvas();
+
+  // 累計プレイ回数の表示。取れなければ空欄のまま静かに諦める(体感速度には影響させない)。
+  PlayCounts.fetchCount("mochi-jump").then(function(count){
+    if(count != null) $("playCountLabel").textContent = "これまでに " + count + " 回プレイされています";
+  });
+
+  // 動作検証用のフック(Rhythm_game/tennis-gameのwindow.__tennis等と同じ用途)
+  window.__mochi = {
+    player: function(){ return player; },
+    teleport: function(x,y){ player.x = x; if(y != null) player.y = y; },
+    coins: function(){ return coins; },
+    coinCount: function(){ return coinCount; },
+    goalX: GOAL_X, levelW: LEVEL_W, groundY: GROUND_Y,
+    spikes: spikes, pits: pits, movers: movers,
+    isEnded: function(){ return ended; }
+  };
+})();
+</script>
+</body>
+</html>
