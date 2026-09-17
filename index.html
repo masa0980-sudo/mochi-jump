@@ -47,6 +47,20 @@
     box-shadow:none;font-size:13px;padding:10px 22px;letter-spacing:.06em;margin-top:12px;}
   #playCountLabel{margin-top:16px;font-size:12px;opacity:.55;min-height:14px;}
 
+  /* ===== ステージ選択 ===== */
+  #select{justify-content:center;padding:24px;text-align:center;}
+  #select h2{font-size:20px;letter-spacing:.08em;margin-bottom:18px;}
+  .stageList{display:flex;flex-direction:column;gap:12px;width:100%;max-width:340px;}
+  .stageBtn{display:flex;align-items:center;gap:14px;text-align:left;cursor:pointer;
+    padding:14px 18px;border-radius:14px;border:1px solid var(--line);
+    background:rgba(255,255,255,.05);color:var(--text);}
+  .stageBtn:disabled{opacity:.4;cursor:default;}
+  .stageBtn .num{font-size:20px;font-weight:900;color:var(--accent);min-width:1.4em;}
+  .stageBtn .info{flex:1;}
+  .stageBtn .name{font-size:14.5px;font-weight:800;}
+  .stageBtn .name .done{color:var(--good);margin-left:6px;font-size:12px;}
+  .stageBtn .desc{font-size:11.5px;opacity:.75;margin-top:2px;}
+
   /* ===== プレイ ===== */
   #play{justify-content:flex-start;}
   #hud{width:100%;display:flex;align-items:center;justify-content:space-between;
@@ -103,8 +117,15 @@
       押しっぱなしで高くジャンプできる。落とし穴に落ちても大丈夫、<br>
       少し戻ってやり直せる。ゴールの臼(うす)を目指そう。
     </div>
-    <button class="btn" id="startBtn">はじめる</button>
+    <button class="btn" id="titleStartBtn">はじめる</button>
     <div id="playCountLabel"></div>
+  </section>
+
+  <!-- ================= ステージ選択 ================= -->
+  <section id="select" class="screen">
+    <h2>ステージをえらぶ</h2>
+    <div class="stageList" id="stageList"></div>
+    <button class="btn ghost" id="selectBackBtn">タイトルへ</button>
   </section>
 
   <!-- ================= プレイ ================= -->
@@ -137,8 +158,9 @@
   <section id="result" class="screen">
     <h2 id="resultTitle"></h2>
     <div id="resultStats"></div>
+    <button class="btn" id="nextStageBtn">つぎのステージへ</button><br>
     <button class="btn" id="retryBtn">もういちど</button><br>
-    <button class="btn ghost" id="toTitleBtn">タイトルへ</button>
+    <button class="btn ghost" id="toSelectBtn">ステージ選択へ</button>
   </section>
 
 </div>
@@ -271,50 +293,169 @@
   })();
 
   /* =========================================================
-     4. Level — 1ステージぶんの地形・障害物・きなこ(収集物)・ゴール定義
+     4. Level — ステージごとの地形・障害物・きなこ(収集物)・ゴール定義
           座標はワールド座標(px)。groundは「上面だけ乗れる」矩形。
+          全ステージ共通のGROUND_Yを基準に、ジャンプの実飛距離(タップ:約147px、
+          最大溜め:約231px、助走ありなら約246px)と最大到達高度(約219px)を
+          超えない範囲で穴幅・足場の高さを決めている(動く足場を使う穴は例外)。
      ========================================================= */
   const GROUND_Y = 320;
-  const platforms = [
-    { x:0,    y:GROUND_Y, w:520,  h:40 },
-    { x:600,  y:GROUND_Y, w:340,  h:40 },
-    { x:1000, y:250,      w:170,  h:26 },
-    { x:1230, y:GROUND_Y, w:340,  h:40 },
-    { x:1660, y:GROUND_Y, w:220,  h:40 },
-    { x:2140, y:GROUND_Y, w:420,  h:40 },
-    { x:2640, y:280,      w:150,  h:26 },
-    { x:2860, y:200,      w:400,  h:26 },
-    { x:3400, y:GROUND_Y, w:400,  h:40 }
-  ];
-  // 動く足場: (x0,x1)の間をvxの速さで往復するy固定の足場
-  const movers = [
-    { x:1900, y:280, w:150, h:22, x0:1900, x1:2060, vx:55, dir:1 }
-  ];
-  const spikes = [
-    { x:1740, y:GROUND_Y-18, w:36, h:18 },
-    { x:2320, y:GROUND_Y-18, w:36, h:18 },
-    { x:2360, y:GROUND_Y-18, w:36, h:18 }
-  ];
-  const pits = [ // 見た目と落下判定用(この範囲でground未満なら穴に落ちたとみなす)
-    { x:520,  x1:600 },
-    { x:1170, x1:1230 },
-    { x:1880, x1:2140 },
-    { x:2790, x1:2860 },
-    { x:3260, x1:3400 }
-  ];
-  const coins = [
-    {x:300,y:270},{x:660,y:270},{x:820,y:270},{x:1050,y:200},
-    {x:1300,y:270},{x:1420,y:270},{x:1720,y:250},{x:2200,y:270},
-    {x:2470,y:270},{x:2680,y:220},{x:2920,y:150},{x:3080,y:150},
-    {x:3460,y:270},{x:3600,y:270}
-  ];
-  const GOAL_X = 3720;
-  const LEVEL_W = 3900;
 
-  function resetLevel(){
-    movers.forEach(m => { m.x = m.x0; m.dir = 1; });
-    coins.forEach(c => { c.taken = false; });
+  const LEVELS = [
+    { id:"stage1", name:"はじめの原っぱ", desc:"まずは基本の動きを覚えよう",
+      platforms:[
+        { x:0,    y:GROUND_Y, w:520,  h:40 },
+        { x:600,  y:GROUND_Y, w:340,  h:40 },
+        { x:1000, y:250,      w:170,  h:26 },
+        { x:1230, y:GROUND_Y, w:340,  h:40 },
+        { x:1660, y:GROUND_Y, w:220,  h:40 },
+        { x:2140, y:GROUND_Y, w:420,  h:40 },
+        { x:2640, y:280,      w:150,  h:26 },
+        { x:2860, y:200,      w:400,  h:26 },
+        { x:3400, y:GROUND_Y, w:400,  h:40 }
+      ],
+      movers:[
+        { x:1900, y:280, w:150, h:22, x0:1900, x1:2060, vx:55 }
+      ],
+      spikes:[
+        { x:1740, y:GROUND_Y-18, w:36, h:18 },
+        { x:2320, y:GROUND_Y-18, w:36, h:18 },
+        { x:2360, y:GROUND_Y-18, w:36, h:18 }
+      ],
+      pits:[
+        { x:520,  x1:600 },
+        { x:1170, x1:1230 },
+        { x:1880, x1:2140 },
+        { x:2790, x1:2860 },
+        { x:3260, x1:3400 }
+      ],
+      coins:[
+        {x:300,y:270},{x:660,y:270},{x:820,y:270},{x:1050,y:200},
+        {x:1300,y:270},{x:1420,y:270},{x:1720,y:250},{x:2200,y:270},
+        {x:2470,y:270},{x:2680,y:220},{x:2920,y:150},{x:3080,y:150},
+        {x:3460,y:270},{x:3600,y:270}
+      ],
+      goalX:3720, levelW:3900
+    },
+    { id:"stage2", name:"きなこの谷", desc:"穴とジャンプ台が増えて少し忙しい",
+      platforms:[
+        { x:0,    y:GROUND_Y, w:420, h:40 },
+        { x:540,  y:GROUND_Y, w:220, h:40 },
+        { x:960,  y:GROUND_Y, w:440, h:40 },
+        { x:1450, y:220,      w:150, h:26 },
+        { x:1650, y:180,      w:200, h:26 },
+        { x:1900, y:GROUND_Y, w:250, h:40 },
+        { x:2450, y:GROUND_Y, w:450, h:40 },
+        { x:3060, y:GROUND_Y, w:340, h:40 },
+        { x:3400, y:GROUND_Y, w:400, h:40 }
+      ],
+      movers:[
+        { x:2150, y:260, w:140, h:22, x0:2150, x1:2350, vx:65 }
+      ],
+      spikes:[
+        { x:620,  y:GROUND_Y-18, w:36, h:18 },
+        { x:1040, y:GROUND_Y-18, w:36, h:18 },
+        { x:1080, y:GROUND_Y-18, w:36, h:18 },
+        { x:2550, y:GROUND_Y-18, w:36, h:18 },
+        { x:2600, y:GROUND_Y-18, w:36, h:18 },
+        { x:3300, y:GROUND_Y-18, w:36, h:18 }
+      ],
+      pits:[
+        { x:420,  x1:540 },
+        { x:760,  x1:960 },
+        { x:1600, x1:1650 },
+        { x:1850, x1:1900 },
+        { x:2150, x1:2450 },
+        { x:2900, x1:3060 }
+      ],
+      coins:[
+        {x:200,y:270},{x:470,y:250},{x:700,y:270},{x:860,y:270},
+        {x:1150,y:270},{x:1350,y:270},{x:1520,y:180},{x:1750,y:140},
+        {x:1950,y:270},{x:2500,y:270},{x:2750,y:270},{x:3120,y:270},
+        {x:3250,y:270},{x:3500,y:270},{x:3650,y:270}
+      ],
+      goalX:3600, levelW:3900
+    },
+    { id:"stage3", name:"もちの絶壁", desc:"動く足場が2つ、とげも連続する上級編",
+      platforms:[
+        { x:0,    y:GROUND_Y, w:380, h:40 },
+        { x:560,  y:GROUND_Y, w:140, h:40 },
+        { x:920,  y:GROUND_Y, w:180, h:40 },
+        { x:1150, y:250,      w:110, h:26 },
+        { x:1310, y:190,      w:110, h:26 },
+        { x:1470, y:150,      w:180, h:26 },
+        { x:1700, y:GROUND_Y, w:150, h:40 },
+        { x:2100, y:GROUND_Y, w:220, h:40 },
+        { x:2570, y:GROUND_Y, w:230, h:40 },
+        { x:3000, y:GROUND_Y, w:450, h:40 }
+      ],
+      movers:[
+        { x:1850, y:260, w:130, h:22, x0:1850, x1:1970, vx:70 },
+        { x:2320, y:270, w:130, h:22, x0:2320, x1:2440, vx:80 }
+      ],
+      spikes:[
+        { x:620,  y:GROUND_Y-18, w:36, h:18 },
+        { x:1000, y:GROUND_Y-18, w:36, h:18 },
+        { x:1040, y:GROUND_Y-18, w:36, h:18 },
+        { x:2200, y:GROUND_Y-18, w:36, h:18 },
+        { x:2240, y:GROUND_Y-18, w:36, h:18 },
+        { x:2650, y:GROUND_Y-18, w:36, h:18 },
+        { x:2690, y:GROUND_Y-18, w:36, h:18 },
+        { x:2730, y:GROUND_Y-18, w:36, h:18 },
+        { x:3300, y:GROUND_Y-18, w:36, h:18 }
+      ],
+      pits:[
+        { x:380,  x1:560 },
+        { x:700,  x1:920 },
+        { x:1100, x1:1150 },
+        { x:1260, x1:1310 },
+        { x:1420, x1:1470 },
+        { x:1650, x1:1700 },
+        { x:1850, x1:2100 },
+        { x:2320, x1:2570 },
+        { x:2800, x1:3000 }
+      ],
+      coins:[
+        {x:180,y:270},{x:650,y:270},{x:980,y:270},{x:1200,y:220},
+        {x:1360,y:160},{x:1520,y:120},{x:1780,y:270},{x:1950,y:220},
+        {x:2160,y:270},{x:2620,y:220},{x:3080,y:270},{x:3250,y:270},
+        {x:3380,y:270}
+      ],
+      goalX:3400, levelW:3600
+    }
+  ];
+
+  // 現在のステージの作業用データ(ステージ切替のたびにLEVELSから複製する)
+  let platforms, movers, spikes, pits, coins, GOAL_X, LEVEL_W, currentLevel = 0;
+
+  function loadLevel(idx){
+    currentLevel = idx;
+    const src = LEVELS[idx];
+    platforms = src.platforms.map(p => ({...p}));
+    movers = src.movers.map(m => ({...m, dir:1}));
+    spikes = src.spikes.map(s => ({...s}));
+    pits = src.pits.map(p => ({...p}));
+    coins = src.coins.map(c => ({...c, taken:false}));
+    GOAL_X = src.goalX; LEVEL_W = src.levelW;
   }
+
+  /* =========================================================
+     4b. Progress — クリア済みステージの記録(localStorage)
+     ========================================================= */
+  const Progress = (function(){
+    const KEY = "mochi-jump:progress";
+    function load(){
+      try{ const r = JSON.parse(localStorage.getItem(KEY) || "null"); if(r && Array.isArray(r.cleared)) return r; }catch(e){}
+      return { cleared: [] };
+    }
+    function markCleared(id){
+      const p = load();
+      if(p.cleared.indexOf(id) < 0) p.cleared.push(id);
+      try{ localStorage.setItem(KEY, JSON.stringify(p)); }catch(e){}
+    }
+    function isCleared(id){ return load().cleared.indexOf(id) >= 0; }
+    return { markCleared, isCleared };
+  })();
 
   /* =========================================================
      5. Game — 物理・当たり判定・カメラ・描画・進行状態
@@ -348,7 +489,6 @@
   }
 
   function initGame(){
-    resetLevel();
     player = { x:30, y:GROUND_Y-PLAYER_H, vx:0, vy:0, w:PLAYER_W, h:PLAYER_H,
       onGround:false, squash:0, facing:1, holdT:0, jumping:false, dead:false, deadT:0 };
     camX = 0; coinCount = 0; startedAt = performance.now(); running = true; paused = false; ended = false;
@@ -401,9 +541,6 @@
     }
 
     // --- 動く足場を進める ---
-    movers.forEach(function(m){
-      m.x += m.vx * m.dir * t * (1/60) * 60 * (dt/1000) * 0; // placeholder (below is real calc)
-    });
     movers.forEach(function(m){
       m.x += m.dir * (m.vx * dt / 1000);
       if(m.x < m.x0){ m.x = m.x0; m.dir = 1; }
@@ -592,14 +729,35 @@
   /* =========================================================
      6. 画面遷移 & UIグルー
      ========================================================= */
-  const SCREENS = ["title","play","result"];
+  const SCREENS = ["title","select","play","result"];
   function show(id){
     SCREENS.forEach(function(s){ $(s).classList.toggle("active", s === id); });
   }
 
-  function startGame(){
+  function paintStageList(){
+    const box = $("stageList");
+    box.innerHTML = "";
+    LEVELS.forEach(function(lv, i){
+      const locked = i > 0 && !Progress.isCleared(LEVELS[i-1].id);
+      const done = Progress.isCleared(lv.id);
+      const btn = document.createElement("button");
+      btn.className = "stageBtn";
+      btn.disabled = locked;
+      btn.innerHTML =
+        '<span class="num">' + (i+1) + '</span>' +
+        '<span class="info">' +
+          '<div class="name">' + (locked ? "???" : lv.name) + (done ? '<span class="done">クリア済み</span>' : '') + '</div>' +
+          '<div class="desc">' + (locked ? "前のステージをクリアすると挑戦できる" : lv.desc) + '</div>' +
+        '</span>';
+      if(!locked) btn.addEventListener("click", function(){ startGame(i); });
+      box.appendChild(btn);
+    });
+  }
+
+  function startGame(levelIndex){
     Sfx.ensure();
-    PlayCounts.increment("mochi-jump");   // START/もういちど 共通、ここ1箇所でカウント
+    PlayCounts.increment("mochi-jump");   // START/もういちど/次のステージ 共通、ここ1箇所でカウント
+    loadLevel(levelIndex);
     show("play");
     fitCanvas();
     initGame();
@@ -607,6 +765,7 @@
   }
 
   function showResult(cleared){
+    if(cleared) Progress.markCleared(LEVELS[currentLevel].id);
     show("result");
     const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
     $("resultTitle").textContent = cleared ? "ゴール!" : "また挑戦しよう";
@@ -614,13 +773,17 @@
     $("resultStats").innerHTML =
       "タイム <b>" + elapsed + "</b> 秒<br>" +
       "きなこ <b>" + coinCount + "</b> / " + coins.length;
+    const hasNext = cleared && currentLevel + 1 < LEVELS.length;
+    $("nextStageBtn").style.display = hasNext ? "inline-block" : "none";
   }
 
-  $("startBtn").addEventListener("click", startGame);
-  $("retryBtn").addEventListener("click", startGame);
-  $("toTitleBtn").addEventListener("click", function(){
+  $("titleStartBtn").addEventListener("click", function(){ paintStageList(); show("select"); });
+  $("selectBackBtn").addEventListener("click", function(){ show("title"); });
+  $("nextStageBtn").addEventListener("click", function(){ startGame(currentLevel + 1); });
+  $("retryBtn").addEventListener("click", function(){ startGame(currentLevel); });
+  $("toSelectBtn").addEventListener("click", function(){
     running = false; ended = true;
-    show("title");
+    paintStageList(); show("select");
   });
   $("pauseBtn").addEventListener("click", function(){
     if(!running || ended) return;
@@ -648,14 +811,33 @@
   });
 
   // 動作検証用のフック(Rhythm_game/tennis-gameのwindow.__tennis等と同じ用途)
+  // ステージ切替でplatforms/spikes/pits/movers/coins/GOAL_X等が丸ごと入れ替わるため、
+  // 値ではなく関数で公開し、常に「今のステージ」の最新値を返すようにしている。
   window.__mochi = {
     player: function(){ return player; },
     teleport: function(x,y){ player.x = x; if(y != null) player.y = y; },
     coins: function(){ return coins; },
     coinCount: function(){ return coinCount; },
-    goalX: GOAL_X, levelW: LEVEL_W, groundY: GROUND_Y,
-    spikes: spikes, pits: pits, movers: movers,
-    isEnded: function(){ return ended; }
+    goalX: function(){ return GOAL_X; },
+    levelW: function(){ return LEVEL_W; },
+    groundY: GROUND_Y,
+    spikes: function(){ return spikes; },
+    pits: function(){ return pits; },
+    movers: function(){ return movers; },
+    isEnded: function(){ return ended; },
+    currentLevel: function(){ return currentLevel; },
+    levels: LEVELS,
+    startGame: startGame,
+    clearProgress: function(){ try{ localStorage.removeItem("mochi-jump:progress"); }catch(e){} },
+    // フレーム精度でのテスト用: 実時間のキー入力を介さず、指定した入力状態のまま
+    // update()をn回(1回=16.6667ms相当)直接進める。ジャンプ距離の限界検証などに使う。
+    step: function(n, input){
+      input = input || {};
+      Input.state.left = !!input.left; Input.state.right = !!input.right;
+      Input.state.jumpHeld = !!input.jumpHeld;
+      if(input.jumpPress) Input.state.jumpPressed = true;
+      for(let i=0;i<n;i++) update(16.6667);
+    }
   };
 })();
 </script>

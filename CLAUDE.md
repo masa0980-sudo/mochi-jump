@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A short browser 2D platformer: a bouncy mochi character crosses one hand-built stage (pits, spikes,
-one moving platform, collectible "きなこ" dots) to reach a goal (a mochi-pounding usu/mortar). The
-entire app — HTML, CSS, JS, Canvas rendering — lives in a single `index.html` file with no build
+A short browser 2D platformer: a bouncy mochi character crosses hand-built stages (pits, spikes,
+moving platforms, collectible "きなこ" dots) to reach each stage's goal (a mochi-pounding usu/mortar).
+The entire app — HTML, CSS, JS, Canvas rendering — lives in a single `index.html` file with no build
 step, no bundler, and no dependencies, following the same philosophy as the sibling `Rhythm_game`,
 `tennis-game`, and `neon-void` repos. Published as-is to GitHub Pages.
 
@@ -30,29 +30,66 @@ modules, in dependency order:
 1. **Sfx** — generates sound via the Web Audio API (no audio files).
 2. **PlayCounts** — Firestore-backed play counter, see below.
 3. **Input** — unifies keyboard (arrows/space/wasd) and touch (on-screen buttons) input.
-4. **Level** — static data: `platforms` (ground-like rects, only their *top* is solid),
-   `movers` (platforms that oscillate between `x0`/`x1` at `vx` px/s — the player's `x` is
-   translated along with the mover while standing on it), `spikes` (instant-death rects), `pits`
-   (visual + fall-detection ranges — not real physics, just "if the player's y exceeds
+4. **Level / LEVELS** — `LEVELS` is an array of stage definitions (`id`, `name`, `desc`, plus the
+   raw per-stage data: `platforms` (ground-like rects, only their *top* is solid), `movers`
+   (platforms that oscillate between `x0`/`x1` at `vx` px/s), `spikes` (instant-death rects),
+   `pits` (visual + fall-detection ranges — not real physics, just "if the player's y exceeds
    `GROUND_Y + 140` here, they've fallen"), `coins` ("きなこ" collectibles, optional bonus),
-   `GOAL_X`/`LEVEL_W`.
+   `goalX`/`levelW`). `loadLevel(idx)` copies `LEVELS[idx]` into the *working* module-scoped
+   `let platforms, movers, spikes, pits, coins, GOAL_X, LEVEL_W` (cloning each object — including
+   resetting every mover's `dir` to `1` and every coin's `taken` to `false` — so replaying a stage
+   or switching stages never leaks state from a previous run). All game code (`update()`,
+   `render()`, `respawnPointFor()`, etc.) reads these working `let` bindings, never `LEVELS`
+   directly — `LEVELS[idx]` is treated as read-only template data.
+4b. **Progress** — tiny `localStorage` wrapper (`mochi-jump:progress`, `{cleared: [id, ...]}`)
+   tracking which stage ids have been cleared at least once. `paintStageList()` uses this to lock
+   stage *N+1* until stage *N*'s id is in `cleared`.
 5. **Game** — physics (`update()`), collision (`aabbTop` + a "was above last frame, is at/below
    now" landing check — deliberately simple, only ever lands on top of a platform, never
    side/bottom collision), camera (`updateCamera`, lerps toward the player), rendering
    (`render()`, all Canvas 2D draw calls, no images/sprites — the mochi and every obstacle are
    drawn procedurally so there's no art-asset pipeline to keep in sync).
-6. **Screen switching**: `SCREENS = ["title","play","result"]` + `show(id)`. Any new screen must
-   be added to `SCREENS`.
+6. **Screen switching**: `SCREENS = ["title","select","play","result"]` + `show(id)`. Any new
+   screen must be added to `SCREENS`. `select` is the stage-list screen; `startGame(levelIndex)`
+   is the one place that calls `loadLevel()` — always go through it rather than mutating the
+   working level state directly.
 
 ### Coordinate system — the thing most likely to bite you
 
 The logical canvas resolution is `VIEW_W = 640, VIEW_H = 420` (see `fitCanvas()`, which just
 scales this via CSS width/height to fit the device — game logic never touches device pixels).
-`GROUND_Y = 320` is the *top* of ground-level platforms. **Any level geometry you add must stay
-within roughly y ∈ [0, 420]** or it silently renders off-canvas (this bit the very first version:
-an earlier `GROUND_Y = 460` with `VIEW_H = 400` put the entire level below the visible area with
-no error — nothing crashes, it just draws nothing you can see. If a change makes the stage look
-empty, check this before anything else).
+`GROUND_Y = 320` is the *top* of ground-level platforms, shared by every stage in `LEVELS`.
+**Any level geometry you add must stay within roughly y ∈ [0, 420]** or it silently renders
+off-canvas (this bit the very first version: an earlier `GROUND_Y = 460` with `VIEW_H = 400` put
+the entire level below the visible area with no error — nothing crashes, it just draws nothing you
+can see. If a change makes a stage look empty, check this before anything else).
+
+### Jump physics — known reach, use it when designing a stage
+
+Before adding/editing a pit or platform height, know the actual limits (simulated frame-by-frame
+against the real constants `GRAVITY=0.62, MOVE_ACC=0.55, MOVE_MAX=4.4, JUMP_V=-11.2,
+JUMP_HOLD_ACC=-0.52, JUMP_HOLD_MAX_T=14`, landing back at launch height):
+
+| jump-button hold | horizontal reach (cold start) | horizontal reach (full run-up) |
+|---|---|---|
+| tap (1 frame) | ~147px | ~163px |
+| ~half hold (7 frames) | ~191px | — |
+| full hold (14 frames) | ~231px | ~246px |
+
+Max vertical rise on a full-hold jump is ~219px above the launch height. **Every non-mover pit
+across every stage must stay at or under ~231px** (the conservative cold-start bound — don't rely
+on the player having a run-up) — `stage3`'s `700→920` pit (220px) is deliberately right at that
+edge as the "hardest stage" signature jump; don't add another gap this tight without a good reason.
+Wider gaps need a `movers` entry to bridge them instead (see `stage2`'s `2150→2450` and `stage3`'s
+two mover-bridged gaps for the pattern: the mover's oscillation range should comfortably overlap
+both the departure platform's far edge and the arrival platform's near edge).
+
+If a stage "looks empty" in testing or a jump that should clearly work doesn't, re-derive this
+table with a quick Node simulation rather than guessing — it's cheap and several real bugs during
+this stage's development turned out to be test-script issues (wrong run-up distance landing in an
+adjacent gap, chained repeated max-jumps overshooting a platform's collision at high fall speed)
+rather than actual level problems, precisely because the physics were verified against this table
+first.
 
 ### Death / respawn model
 
@@ -87,17 +124,33 @@ reusing `"mochi-jump"`.
 
 ### `window.__mochi` — debug/test hook
 
-Exposes `player()`, `teleport(x,y)`, `coins()`, `coinCount()`, `goalX`, `levelW`, `groundY`,
-`spikes`, `pits`, `movers`, `isEnded()` — unconditionally (not gated behind a `?debug=1` flag,
-unlike `Rhythm_game`'s `window.__rhythmDebug`), same idea as `window.__tennis` in `tennis-game`.
-Use `teleport()` to drive Playwright tests directly at a hazard (a spike, a pit, `goalX`) instead
-of trying to time real key-presses to reach it — much less flaky, and it's how the spike/pit/goal
-behavior was verified when this stage was built.
+Exposes `player()`, `teleport(x,y)`, `coins()`, `coinCount()`, `goalX()`, `levelW()`, `groundY`,
+`spikes()`, `pits()`, `movers()`, `isEnded()`, `currentLevel()`, `levels` (the raw `LEVELS` array),
+`startGame(idx)`, `clearProgress()`, and `step(n, {left,right,jumpHeld,jumpPress})` — unconditionally
+(not gated behind a `?debug=1` flag, unlike `Rhythm_game`'s `window.__rhythmDebug`), same idea as
+`window.__tennis` in `tennis-game`. **Everything that depends on the current stage is a function,
+not a plain value** — `platforms`/`movers`/`spikes`/`pits`/`coins`/`GOAL_X`/`LEVEL_W` are all
+reassigned by `loadLevel()` on every `startGame()` call, so a plain captured value would go stale
+the moment a second stage loads.
+
+Two testing patterns worth knowing before you next touch level geometry:
+- `teleport()` + realtime input is fine for one-off checks, but **always call `startGame(idx)`
+  immediately before each independent test** — `player.dead` and other run state carry over
+  between checks otherwise (an earlier death state silently no-ops all later `update()` calls
+  until the respawn timer clears, making an unrelated later test look like it failed).
+- `step(n, input)` advances `update()` exactly `n` times at a fixed 16.6667ms/frame, bypassing
+  real keyboard timing entirely — use it for anything where exact frame counts matter (verifying a
+  specific pit's width is actually crossable with a specific jump-hold duration, per the reach
+  table above). Realtime `keyboard.down()`/`waitForTimeout()` is fine for a casual look at a
+  stage, but don't trust its precise pass/fail for a tight jump — wall-clock jitter changes the
+  effective hold duration by a frame or two, which is exactly the margin some of these jumps live
+  in.
 
 ## Scope
 
-v1 is deliberately a single short stage (one straight path, ~15–25 seconds for a clean run,
-longer while learning the moving-platform gap around x≈1900–2140). No lives, no leaderboard, no
-multiple stages, no character select — those are natural follow-ups once this one stage has
-actually been played and the feel/difficulty is confirmed to land well, not things to add
-speculatively now.
+Ships with three stages (`stage1`/`stage2`/`stage3` in `LEVELS`, unlocked in order via `Progress`).
+Still no lives system and no leaderboard — falling/dying only costs a respawn, never a life or a
+run-ending game-over, and there's no cross-stage scoring beyond the per-run "きなこ" count and
+clear time shown on the result screen. Adding a fourth stage means appending to `LEVELS` (respecting
+the reach table above) — `paintStageList()`, `Progress`, and `startGame()` all already generalize
+over `LEVELS.length` and need no changes for additional stages.
