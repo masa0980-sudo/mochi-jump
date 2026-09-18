@@ -163,13 +163,38 @@ over `LEVELS.length` and need no changes for additional stages.
 `art/keyart.png` (title screen, set as `#title`'s CSS `background`, dimmed with a `#title::before`
 scrim gradient for text legibility) and `art/bg_stage{1,2,3}.png` (one per `LEVELS` entry, via
 `bg:` field, applied to `canvas#game` in `loadLevel()`) are backdrop illustrations only — no
-sprites, no gameplay hitboxes derive from them. All four are picture-book (ehon) style pastel
+sprites, no gameplay hitboxes derive from them. All are picture-book (ehon) style pastel
 wagashi-world illustrations generated with Gemini's web app (image API has no free tier; see the
-sibling repos' CLAUDE.md "Gemini でシーン画像を無料で作る" for the free route), using `keyart.png`
-itself as the reference image for the three stage backgrounds so the mochi character design in
-each image stays consistent. Missing/failed-to-load art degrades silently: CSS background-image
-that 404s just doesn't paint, leaving the plain gradient (`#title` falls back to `body`'s own
-radial-gradient since it sets no background of its own without the image; `canvas#game`'s inline
-`style.background` always includes the original navy gradient as a second layer) — no JS
-image-loading/fallback logic needed, unlike the sprite `poseFile()`/`missingArt` pattern in
-`tennis-game`.
+sibling repos' CLAUDE.md "Gemini でシーン画像を無料で作る" for the free route). Missing/failed-to-load
+art degrades silently: CSS background-image that 404s just doesn't paint, leaving the plain
+gradient (`#title` falls back to `body`'s own radial-gradient since it sets no background of its
+own without the image; `canvas#game`'s inline `style.background` always includes the original navy
+gradient as a second layer) — no JS image-loading/fallback logic needed, unlike the sprite
+`poseFile()`/`missingArt` pattern in `tennis-game`.
+
+**`bg_stage{1,2,3}.png` are deliberately calm/sparse** (2026-09-19 revision): the first version
+used `keyart.png` as a reference image so the busy hero-illustration composition (dense wagashi
+clusters, the mochi character drawn into the scene) carried straight into the stage backgrounds,
+and it read as cluttered *behind actual gameplay* — competing with the platforms/spikes/coins the
+canvas draws on top. Revised prompts keep only a thin band of scenery hugging the very bottom edge
+(low hill silhouette, one or two sparse trees) and leave the middle/lower two-thirds of the frame
+almost empty sky, explicitly excluding the character and any food/prop clutter, so gameplay stays
+readable. **The original busy illustrations weren't thrown away** — they were repurposed as
+`art/clear_stage{1,2,3}.png`, shown via `#resultClearArt` in `showResult()` only when `cleared` is
+true (via each `LEVELS` entry's `clearArt` field) — a "richer scene as the reward for finishing"
+reads well precisely because it's *not* what you were staring at while playing. Same graceful
+degradation as the other art: `img.onerror` just re-hides the element.
+
+## BGM
+
+`Sfx` also owns a single always-on pop BGM (`startBgm()`/`stopBgm()`, called from `startGame()`,
+`showResult()`, pause/resume/quit, `visibilitychange`, and `pagehide`) — same look-ahead scheduler
+architecture as `tennis-game`/`neon-void` (`SCHEDULE_AHEAD=0.6s`, catch-up-by-resync instead of
+bursting stale notes, a shared noise buffer/filters, `onended`-triggered `disconnect()`). One
+4-bar loop, BPM 148, the classic pop progression C→G→Am→F voiced as 7th chords (`CHORDS[].tones`
+has 4 entries, not 3) so the pad layer alone has some harmonic thickness; a second, barely-detuned
+(`*1.004`) sine layer doubles every pad note for a light chorus effect — that pairing is what makes
+it not read as "monotonous" the way a single square-wave lead over bare triads would. Measured
+~43 nodes/s, comfortably under neon-void's documented worst case (219–306/s), so no per-stage
+theme switching was needed to keep it light — see `tennis-game`'s CLAUDE.md if a future request
+wants stage-by-stage BGM variety, that repo's `bgmThemeFor()` pattern is the template to copy.

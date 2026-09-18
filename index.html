@@ -99,6 +99,9 @@
 
   /* ===== 結果 ===== */
   #result{justify-content:center;padding:24px;text-align:center;}
+  #resultClearArt{width:min(100%,320px);border-radius:16px;margin:0 auto 14px;display:block;
+    box-shadow:0 8px 24px rgba(0,0,0,.35);}
+  #resultClearArt[hidden]{display:none;}
   #result h2{font-size:26px;letter-spacing:.06em;margin-bottom:6px;}
   #result h2.clear{color:var(--good);}
   #resultStats{margin:14px 0 6px;font-size:14px;line-height:2.1;
@@ -160,6 +163,7 @@
 
   <!-- ================= 結果 ================= -->
   <section id="result" class="screen">
+    <img id="resultClearArt" alt="" hidden>
     <h2 id="resultTitle"></h2>
     <div id="resultStats"></div>
     <button class="btn" id="nextStageBtn">つぎのステージへ</button><br>
@@ -194,13 +198,143 @@
       osc.connect(g); g.connect(ac.destination);
       osc.start(t0); osc.stop(t0 + dur + 0.02);
     }
+    /* ===== BGM(ポップで少し重厚な和音入りのループ。tennis-game/neon-void と同じ
+       先読みスケジューラ方式)。4小節=64ステップを1ループとし、小節ごとにリード/ベース
+       の型を変えて単調さを避ける。和音は4声(7th)+わずかにデチューンした層を重ねて厚みを出す。 */
+    const BGM_BPM = 148;
+    const bgmStepSec = 60 / BGM_BPM / 4;   // 16分音符の長さ(秒)
+    const SCHEDULE_AHEAD = 0.6;            // 先読み(秒)。短いと主スレッドが詰まった瞬間に途切れる
+    const SCHED_INTERVAL_MS = 50;
+    const BGM_STEPS = 64;
+
+    function noteHz(semi){ return 110 * Math.pow(2, semi / 12); }
+    // 度数(0..2=三和音の構成音, 3=ルート+オクターブ, 4=5度+オクターブ, null=休符)
+    function degreeSemi(chord, deg){
+      if (deg === 3) return chord.tones[0] + 12;
+      if (deg === 4) return chord.tones[2] + 12;
+      return chord.tones[deg];
+    }
+    // A=0とした半音オフセット。C=3,E=7,G=10,F=8。定番のポップ進行 C→G→Am→F を7th化して厚みを持たせた
+    const CHORDS = [
+      { tones:[3,7,10,14],   bass:3  },   // CM7
+      { tones:[10,14,17,20], bass:-2 },   // G7
+      { tones:[0,3,7,10],    bass:0  },   // Am7
+      { tones:[8,12,15,19],  bass:-4 },   // FM7
+    ];
+    const LEAD = [
+      [0,3,2,3, 4,3,2,1, 0,3,2,3, 4,3,2,4],
+      [2,1,0,1, 2,3,4,3, 2,1,0,1, 2,3,2,1],
+      [0,3,2,0, 4,3,2,3, 0,3,2,0, 4,3,4,3],
+      [4,3,2,1, 0,1,2,3, 4,3,2,1, 0,1,0,null],
+    ];
+    const BASSLINE = [
+      [0,null,0,null, 0,null,0,0, 0,null,0,null, 0,null,0,0],
+      [0,null,0,null, 0,0,null,0, 0,null,0,null, 0,0,null,0],
+      [0,null,0,null, 0,null,0,0, 0,null,0,null, 0,null,0,0],
+      [0,null,0,null, 0,0,null,0, 0,null,0,null, 0,0,0,null],
+    ];
+
+    let bgmOn = false, bgmStep = 0, bgmNextAt = 0, bgmTimer = null;
+    let noiseBuf = null, busGain = null, hatFilter = null, snareFilter = null, bassFilter = null;
+    let bgmDelay = null, bgmDelayFb = null, bgmDelayWet = null;
+
+    function setupBgmBus(){
+      if (!ac || busGain) return;
+      busGain = ac.createGain(); busGain.gain.value = 0.5; busGain.connect(ac.destination);
+      bgmDelay = ac.createDelay(1.0); bgmDelayFb = ac.createGain(); bgmDelayWet = ac.createGain();
+      bgmDelay.delayTime.value = 0.34; bgmDelayFb.gain.value = 0.22; bgmDelayWet.gain.value = 0.13;
+      bgmDelay.connect(bgmDelayFb); bgmDelayFb.connect(bgmDelay);
+      bgmDelay.connect(bgmDelayWet); bgmDelayWet.connect(busGain);
+      hatFilter = ac.createBiquadFilter(); hatFilter.type = "highpass"; hatFilter.frequency.value = 7000;
+      hatFilter.connect(busGain);
+      snareFilter = ac.createBiquadFilter(); snareFilter.type = "bandpass"; snareFilter.frequency.value = 1900;
+      snareFilter.Q.value = 0.8; snareFilter.connect(busGain);
+      bassFilter = ac.createBiquadFilter(); bassFilter.type = "lowpass"; bassFilter.frequency.value = 440;
+      bassFilter.connect(busGain);
+      const len = Math.floor(ac.sampleRate * 0.3);
+      noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    }
+    function autoRelease(node, g, endAt){
+      node.onended = function(){ try { node.disconnect(); g.disconnect(); } catch (e) {} };
+      node.stop(endAt);
+    }
+    function noiseHit(at, dur, peak, dest){
+      const src = ac.createBufferSource(); src.buffer = noiseBuf;
+      const g = ac.createGain();
+      g.gain.setValueAtTime(peak, at);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      src.connect(g); g.connect(dest);
+      src.start(at); autoRelease(src, g, at + dur + 0.02);
+    }
+    function bgmOsc(at, dur, freq, peak, type, dest, freqEnd){
+      const o = ac.createOscillator(); o.type = type;
+      o.frequency.setValueAtTime(freq, at);
+      if (freqEnd != null) o.frequency.exponentialRampToValueAtTime(freqEnd, at + dur);
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(peak, at + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(g); g.connect(dest || busGain);
+      o.start(at); autoRelease(o, g, at + dur + 0.03);
+    }
+    function bgmStepAt(step, at){
+      const bar = Math.floor(step / 16) % 4, i = step % 16;
+      const chord = CHORDS[bar];
+      if (i % 4 === 0) bgmOsc(at, 0.15, 150, 0.42, "sine", busGain, 50);        // キック
+      if (i % 2 === 0) noiseHit(at, 0.03, 0.05, hatFilter);                    // ハイハット
+      if (i === 4 || i === 12) noiseHit(at, 0.1, 0.13, snareFilter);           // スネア
+      const b = BASSLINE[bar][i];
+      if (b != null) bgmOsc(at, bgmStepSec * 2.4, noteHz(chord.bass), 0.3, "sawtooth", bassFilter);
+      // 和音パッド: 拍ごとに4声(7th)+わずかにデチューンした層を重ねて厚みを出す
+      if (i % 4 === 0) {
+        const dur = bgmStepSec * 3.4;
+        chord.tones.forEach(function(t){
+          const hz = noteHz(t) * 2;
+          bgmOsc(at, dur, hz, 0.045, "triangle", busGain);
+          bgmOsc(at, dur, hz * 1.004, 0.02, "sine", busGain);
+        });
+      }
+      const d = LEAD[bar][i];
+      if (d != null) {
+        const hz = noteHz(degreeSemi(chord, d)) * 2;
+        bgmOsc(at, bgmStepSec * 1.5, hz, 0.09, "square", busGain);
+        if (i % 8 === 0 && bgmDelay) bgmOsc(at, bgmStepSec * 1.5, hz, 0.035, "square", bgmDelay);
+      }
+    }
+    function bgmTick(){
+      if (!bgmOn || !ac) return;
+      const now = ac.currentTime;
+      // 大きく遅れたら追いつくのを諦め、拍を取り直す(まとめ発音による悪循環を防ぐ)
+      if (bgmNextAt < now - 0.05) {
+        const skip = Math.ceil((now - bgmNextAt) / bgmStepSec);
+        bgmStep += skip; bgmNextAt += skip * bgmStepSec;
+      }
+      let guard = 0;
+      while (bgmNextAt < now + SCHEDULE_AHEAD && guard++ < 32) {
+        try { bgmStepAt(bgmStep % BGM_STEPS, bgmNextAt); } catch (e) {}
+        bgmNextAt += bgmStepSec; bgmStep++;
+      }
+      bgmTimer = setTimeout(bgmTick, SCHED_INTERVAL_MS);
+    }
+    function startBgm(){
+      ensure();
+      if (!ac || bgmOn) return;
+      setupBgmBus();
+      bgmOn = true; bgmStep = 0; bgmNextAt = ac.currentTime + 0.08;
+      bgmTick();
+    }
+    function stopBgm(){ bgmOn = false; clearTimeout(bgmTimer); }
+
     return {
       ensure,
       jump(){ tone(360, 0.16, "sine", 0.16, 620); },
       land(){ tone(180, 0.09, "sine", 0.14, 90); },
       coin(){ tone(880, 0.09, "square", 0.10, 1320); },
       hit(){ tone(140, 0.22, "sawtooth", 0.14, 60); },
-      clear(){ [523,659,784,1047].forEach((f,i)=> setTimeout(()=>tone(f,0.28,"triangle",0.14), i*90)); }
+      clear(){ [523,659,784,1047].forEach((f,i)=> setTimeout(()=>tone(f,0.28,"triangle",0.14), i*90)); },
+      startBgm, stopBgm
     };
   })();
 
@@ -307,6 +441,7 @@
 
   const LEVELS = [
     { id:"stage1", name:"はじめの原っぱ", desc:"まずは基本の動きを覚えよう", bg:"art/bg_stage1.png",
+      clearArt:"art/clear_stage1.png",
       platforms:[
         { x:0,    y:GROUND_Y, w:520,  h:40 },
         { x:600,  y:GROUND_Y, w:340,  h:40 },
@@ -342,6 +477,7 @@
       goalX:3720, levelW:3900
     },
     { id:"stage2", name:"きなこの谷", desc:"穴とジャンプ台が増えて少し忙しい", bg:"art/bg_stage2.png",
+      clearArt:"art/clear_stage2.png",
       platforms:[
         { x:0,    y:GROUND_Y, w:420, h:40 },
         { x:540,  y:GROUND_Y, w:220, h:40 },
@@ -381,6 +517,7 @@
       goalX:3600, levelW:3900
     },
     { id:"stage3", name:"もちの絶壁", desc:"動く足場が2つ、とげも連続する上級編", bg:"art/bg_stage3.png",
+      clearArt:"art/clear_stage3.png",
       platforms:[
         { x:0,    y:GROUND_Y, w:380, h:40 },
         { x:560,  y:GROUND_Y, w:140, h:40 },
@@ -764,6 +901,7 @@
 
   function startGame(levelIndex){
     Sfx.ensure();
+    Sfx.startBgm();
     PlayCounts.increment("mochi-jump");   // START/もういちど/次のステージ 共通、ここ1箇所でカウント
     loadLevel(levelIndex);
     show("play");
@@ -773,6 +911,7 @@
   }
 
   function showResult(cleared){
+    Sfx.stopBgm();
     if(cleared) Progress.markCleared(LEVELS[currentLevel].id);
     show("result");
     const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
@@ -783,6 +922,18 @@
       "きなこ <b>" + coinCount + "</b> / " + coins.length;
     const hasNext = cleared && currentLevel + 1 < LEVELS.length;
     $("nextStageBtn").style.display = hasNext ? "inline-block" : "none";
+    // クリア時だけ、そのステージのご褒美イラスト(art/clear_stageN.png)を表示する。
+    // 読み込めなくてもhiddenのままで無害(失敗時のフォールバック処理は不要)。
+    const art = $("resultClearArt");
+    const clearArt = cleared && LEVELS[currentLevel].clearArt;
+    if(clearArt){
+      art.src = clearArt;
+      art.hidden = false;
+      art.onerror = function(){ art.hidden = true; };
+    } else {
+      art.hidden = true;
+      art.removeAttribute("src");
+    }
   }
 
   $("titleStartBtn").addEventListener("click", function(){ paintStageList(); show("select"); });
@@ -796,20 +947,25 @@
   $("pauseBtn").addEventListener("click", function(){
     if(!running || ended) return;
     paused = true; $("pauseOverlay").classList.add("show");
+    Sfx.stopBgm();
   });
   $("resumeBtn").addEventListener("click", function(){
     paused = false; $("pauseOverlay").classList.remove("show"); lastT = performance.now();
+    Sfx.startBgm();
   });
   $("quitBtn").addEventListener("click", function(){
     paused = false; running = false; ended = true;
     $("pauseOverlay").classList.remove("show");
+    Sfx.stopBgm();
     show("title");
   });
   document.addEventListener("visibilitychange", function(){
     if(document.hidden && running && !ended && !paused){
       paused = true; $("pauseOverlay").classList.add("show");
+      Sfx.stopBgm();
     }
   });
+  window.addEventListener("pagehide", function(){ Sfx.stopBgm(); });
 
   fitCanvas();
 
