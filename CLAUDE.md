@@ -47,8 +47,11 @@ modules, in dependency order:
 5. **Game** — physics (`update()`), collision (`aabbTop` + a "was above last frame, is at/below
    now" landing check — deliberately simple, only ever lands on top of a platform, never
    side/bottom collision), camera (`updateCamera`, lerps toward the player), rendering
-   (`render()`, all Canvas 2D draw calls, no images/sprites — the mochi and every obstacle are
-   drawn procedurally so there's no art-asset pipeline to keep in sync).
+   (`render()`, all Canvas 2D draw calls — the mochi and every obstacle are still drawn
+   procedurally, no sprite art to keep in sync). `drawBg()` only paints a few parallax star dots
+   and never fills a background rect, so `canvas#game`'s CSS `background` (set per-stage in
+   `loadLevel()` from `LEVELS[idx].bg`) shows through underneath everything the canvas draws —
+   see "Art" below.
 6. **Screen switching**: `SCREENS = ["title","select","play","result"]` + `show(id)`. Any new
    screen must be added to `SCREENS`. `select` is the stage-list screen; `startGame(levelIndex)`
    is the one place that calls `loadLevel()` — always go through it rather than mutating the
@@ -154,3 +157,19 @@ run-ending game-over, and there's no cross-stage scoring beyond the per-run "き
 clear time shown on the result screen. Adding a fourth stage means appending to `LEVELS` (respecting
 the reach table above) — `paintStageList()`, `Progress`, and `startGame()` all already generalize
 over `LEVELS.length` and need no changes for additional stages.
+
+## Art
+
+`art/keyart.png` (title screen, set as `#title`'s CSS `background`, dimmed with a `#title::before`
+scrim gradient for text legibility) and `art/bg_stage{1,2,3}.png` (one per `LEVELS` entry, via
+`bg:` field, applied to `canvas#game` in `loadLevel()`) are backdrop illustrations only — no
+sprites, no gameplay hitboxes derive from them. All four are picture-book (ehon) style pastel
+wagashi-world illustrations generated with Gemini's web app (image API has no free tier; see the
+sibling repos' CLAUDE.md "Gemini でシーン画像を無料で作る" for the free route), using `keyart.png`
+itself as the reference image for the three stage backgrounds so the mochi character design in
+each image stays consistent. Missing/failed-to-load art degrades silently: CSS background-image
+that 404s just doesn't paint, leaving the plain gradient (`#title` falls back to `body`'s own
+radial-gradient since it sets no background of its own without the image; `canvas#game`'s inline
+`style.background` always includes the original navy gradient as a second layer) — no JS
+image-loading/fallback logic needed, unlike the sprite `poseFile()`/`missingArt` pattern in
+`tennis-game`.

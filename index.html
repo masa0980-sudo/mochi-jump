@@ -26,7 +26,11 @@
   .screen.active{display:flex;}
 
   /* ===== タイトル ===== */
-  #title{justify-content:center;padding:24px;text-align:center;}
+  #title{justify-content:center;padding:24px;text-align:center;position:relative;
+    background:url('art/keyart.png') center/cover no-repeat;}
+  #title::before{content:"";position:absolute;inset:0;
+    background:linear-gradient(180deg,rgba(12,15,26,.35) 0%,rgba(12,15,26,.72) 65%,rgba(12,15,26,.88) 100%);}
+  #title>*{position:relative;z-index:1;}
   .mochiLogo{font-size:clamp(30px,9vw,46px);font-weight:900;letter-spacing:.04em;line-height:1.25;
     background:linear-gradient(90deg,var(--accent2),var(--accent));
     -webkit-background-clip:text;background-clip:text;color:transparent;
@@ -302,7 +306,7 @@
   const GROUND_Y = 320;
 
   const LEVELS = [
-    { id:"stage1", name:"はじめの原っぱ", desc:"まずは基本の動きを覚えよう",
+    { id:"stage1", name:"はじめの原っぱ", desc:"まずは基本の動きを覚えよう", bg:"art/bg_stage1.png",
       platforms:[
         { x:0,    y:GROUND_Y, w:520,  h:40 },
         { x:600,  y:GROUND_Y, w:340,  h:40 },
@@ -337,7 +341,7 @@
       ],
       goalX:3720, levelW:3900
     },
-    { id:"stage2", name:"きなこの谷", desc:"穴とジャンプ台が増えて少し忙しい",
+    { id:"stage2", name:"きなこの谷", desc:"穴とジャンプ台が増えて少し忙しい", bg:"art/bg_stage2.png",
       platforms:[
         { x:0,    y:GROUND_Y, w:420, h:40 },
         { x:540,  y:GROUND_Y, w:220, h:40 },
@@ -376,7 +380,7 @@
       ],
       goalX:3600, levelW:3900
     },
-    { id:"stage3", name:"もちの絶壁", desc:"動く足場が2つ、とげも連続する上級編",
+    { id:"stage3", name:"もちの絶壁", desc:"動く足場が2つ、とげも連続する上級編", bg:"art/bg_stage3.png",
       platforms:[
         { x:0,    y:GROUND_Y, w:380, h:40 },
         { x:560,  y:GROUND_Y, w:140, h:40 },
@@ -437,6 +441,10 @@
     pits = src.pits.map(p => ({...p}));
     coins = src.coins.map(c => ({...c, taken:false}));
     GOAL_X = src.goalX; LEVEL_W = src.levelW;
+    // ステージごとの絵本風背景art(art/bg_stageN.png)。読み込めなくても既存のグラデーションが
+    // 透けて見えるだけで無害(canvasの描画はdrawBg()が背景を塗りつぶさない前提に依存する)。
+    canvas.style.background = (src.bg ? "url('" + src.bg + "') center/cover no-repeat, " : "")
+      + "linear-gradient(180deg,#26305c 0%,#182140 55%,#10142a 100%)";
   }
 
   /* =========================================================
