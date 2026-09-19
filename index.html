@@ -21,7 +21,11 @@
     display:flex;align-items:center;justify-content:center;overflow:hidden;
     user-select:none;
   }
-  #stage{position:relative;width:min(100vw,620px);height:min(100vh,900px);overflow:hidden;}
+  /* スマホのブラウザは 100vh をアドレスバーを隠した状態の高さで計算するため、
+     実際に見えている領域より #stage が背高になり、中央揃えの結果として上端(HUD)が
+     画面の上にはみ出して見えなくなっていた。可視領域に追従する dvh を優先し、
+     非対応ブラウザ向けに vh をフォールバックとして先に書く。 */
+  #stage{position:relative;width:min(100vw,620px);height:min(100vh,900px);height:min(100dvh,900px);overflow:hidden;}
   .screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;}
   .screen.active{display:flex;}
 
