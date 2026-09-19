@@ -118,6 +118,15 @@ plain read-only GET of the single `playCounts/mochi-jump` document, called once 
 the title screen's "これまでに ◯ 回プレイされています" line — non-blocking, and left blank forever
 if the fetch fails or the doc doesn't exist yet (no loading spinner, no retry).
 
+**`increment()` is a no-op when served from `localhost` / `127.0.0.1` / `file:`** (2026-09-19).
+The Firestore target is the hardcoded *production* project, so every Playwright check that called
+`startGame()` during stage development (see the testing patterns above — "always call
+`startGame(idx)` immediately before each independent test") sent a real `+1`. The public counter
+had reached ~25 plays before the game was linked anywhere, which is how this was noticed.
+`fetchCount()` is deliberately left unguarded so the title screen still shows the real number
+during local testing. If you ever need to test the write path itself, temporarily serve from a
+non-loopback hostname rather than removing the guard.
+
 This Firestore project is intentionally **shared across several separate public games**
 (`Rhythm_game`, `tennis-game`, `neon-void`, `typing_quotes`, etc.) — each game's own
 `playCounts/{gameId}` document lives in the same `playCounts` collection, keyed by an id unique to

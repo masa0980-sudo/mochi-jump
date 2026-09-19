@@ -357,8 +357,12 @@
     const PROJECT_ID = "rythm-game-mo";
     const API_KEY = "AIzaSyBBo4f_LqJ2lfdKu8Q11oeiiYq_O-15LSc";
     const ROOT = "https://firestore.googleapis.com/v1/projects/" + PROJECT_ID + "/databases/(default)/documents";
+    // 開発中のPlaywrightテスト（startGame()を何度も呼ぶ）が本番カウンターを増やしていた。
+    // 接続先はハードコードされた本番プロジェクトなので、ローカル配信時はカウントしない
+    const IS_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === "file:";
 
     function increment(gameId){
+      if(IS_LOCAL) return Promise.resolve();
       const commitUrl = ROOT + ":commit?key=" + API_KEY;
       const docPath = "projects/" + PROJECT_ID + "/databases/(default)/documents/playCounts/" + encodeURIComponent(gameId);
       const incrementBody = {
