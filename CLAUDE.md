@@ -33,8 +33,11 @@ modules, in dependency order:
 4. **Level / LEVELS** — `LEVELS` is an array of stage definitions (`id`, `name`, `desc`, plus the
    raw per-stage data: `platforms` (ground-like rects, only their *top* is solid), `movers`
    (platforms that oscillate between `x0`/`x1` at `vx` px/s), `spikes` (instant-death rects),
-   `pits` (visual + fall-detection ranges — not real physics, just "if the player's y exceeds
-   `GROUND_Y + 140` here, they've fallen"), `coins` ("きなこ" collectibles, optional bonus),
+   `pits` (fall-detection ranges only — not real physics, just "if the player's y exceeds
+   `GROUND_Y + 140` here, they've fallen". `render()` deliberately does **not** paint a filled
+   rect over them (removed 2026-09-19) — a flat black block over the background art read as an
+   ugly hole rather than a gap; the background showing through, with the absence of a platform,
+   is the only visual cue that it's a pit), `coins` ("きなこ" collectibles, optional bonus),
    `goalX`/`levelW`). `loadLevel(idx)` copies `LEVELS[idx]` into the *working* module-scoped
    `let platforms, movers, spikes, pits, coins, GOAL_X, LEVEL_W` (cloning each object — including
    resetting every mover's `dir` to `1` and every coin's `taken` to `false` — so replaying a stage

@@ -864,11 +864,8 @@
   function render(){
     ctx.clearRect(0,0,VIEW_W,VIEW_H);
     drawBg();
-    pits.forEach(function(p){
-      const x = p.x - camX, w = p.x1 - p.x;
-      ctx.fillStyle = "#05070f";
-      ctx.fillRect(x, GROUND_Y, w, VIEW_H - GROUND_Y);
-    });
+    // 落とし穴は塗りつぶさない。背景art(空・丘)がそのまま透けて見える方が
+    // 黒い矩形で覆うより自然で、プラットフォームの有無だけで「穴」と伝わるため。
     platforms.forEach(function(p){ drawPlatform(p); });
     movers.forEach(function(m){ drawPlatform(m, "#ffd9ea"); });
     spikes.forEach(drawSpike);
