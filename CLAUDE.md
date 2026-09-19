@@ -207,3 +207,17 @@ it not read as "monotonous" the way a single square-wave lead over bare triads w
 ~43 nodes/s, comfortably under neon-void's documented worst case (219–306/s), so no per-stage
 theme switching was needed to keep it light — see `tennis-game`'s CLAUDE.md if a future request
 wants stage-by-stage BGM variety, that repo's `bgmThemeFor()` pattern is the template to copy.
+
+## Mobile touch layout
+
+`canvas#game` locks a fixed 640×420 aspect (`VIEW_W`/`VIEW_H`) via `fitCanvas()`, so on a narrow
+tall phone the width is always the limiting dimension and the rendered canvas ends up much
+shorter than `#canvasWrap`'s full available height. **`#touchBar` must stay inside the normal
+flex flow directly under the canvas, not `position:absolute;bottom:0` of `#canvasWrap`** — the
+absolute version pinned the on-screen buttons to the very bottom of the tall wrapper, tens of
+percent of the viewport below the actual (short, top-of-wrapper) game content, which read as
+"buttons are too far from the screen" (reported 2026-09-19). `#canvasWrap` is a
+`flex-direction:column; justify-content:center; align-items:center` container so canvas+touchBar
+center together as one group with a small `gap`, keeping the thumb close to the action regardless
+of phone aspect ratio. If you ever change `VIEW_W`/`VIEW_H` to reduce letterboxing, re-check this
+— centering only fixes the *distance*, not the underlying letterboxing itself.

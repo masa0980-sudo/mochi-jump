@@ -72,11 +72,14 @@
   #hud .chip{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:10px;
     padding:6px 12px;font-variant-numeric:tabular-nums;}
   #hud .chip b{color:var(--accent);}
-  #canvasWrap{position:relative;width:100%;flex:1;min-height:0;}
-  canvas#game{display:block;width:100%;height:100%;touch-action:none;
+  #canvasWrap{position:relative;width:100%;flex:1;min-height:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;}
+  canvas#game{display:block;flex:none;touch-action:none;
     background:linear-gradient(180deg,#26305c 0%,#182140 55%,#10142a 100%);}
-  #touchBar{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;
-    align-items:flex-end;padding:0 16px 18px;pointer-events:none;z-index:6;}
+  /* 操作ボタンはcanvasWrap全体の下端(=画面のはるか下)ではなく、canvas直下に
+     通常のフローで並べる。こうするとcanvasと一緒に中央へ寄って距離が縮む。 */
+  #touchBar{position:relative;display:flex;justify-content:space-between;align-items:center;
+    width:100%;max-width:480px;padding:0 20px;pointer-events:none;z-index:6;flex:none;}
   .padGroup{display:flex;gap:10px;pointer-events:auto;}
   .padBtn{width:60px;height:60px;border-radius:18px;background:rgba(255,255,255,.1);
     border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
