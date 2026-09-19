@@ -36,9 +36,9 @@
     -webkit-background-clip:text;background-clip:text;color:transparent;
     filter:drop-shadow(0 0 18px rgba(255,179,122,.35));}
   .sub{margin-top:8px;font-size:12px;letter-spacing:.28em;color:var(--accent);opacity:.9;}
-  .rule{margin:20px auto 0;max-width:380px;padding:16px 18px;border-radius:14px;
-    background:rgba(255,255,255,.05);border:1px solid var(--line);
-    font-size:13px;line-height:1.9;text-align:left;}
+  .rule{max-width:300px;font-size:13px;line-height:1.9;text-align:left;}
+  .rule p{margin:0 0 10px;}
+  .rule p:last-child{margin-bottom:0;}
   .btn{margin-top:22px;cursor:pointer;user-select:none;border:none;
     padding:15px 46px;font-size:18px;font-weight:800;letter-spacing:.1em;
     color:#2a1608;border-radius:40px;
@@ -89,12 +89,12 @@
   #pauseBtn{background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--text);
     border-radius:10px;padding:6px 12px;font-size:12px;}
 
-  /* ===== 一時停止 ===== */
-  #pauseOverlay{position:absolute;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
-    background:rgba(8,10,20,.72);backdrop-filter:blur(2px);}
-  #pauseOverlay.show{display:flex;}
+  /* ===== 一時停止・あそびかた（共通オーバーレイ） ===== */
+  #pauseOverlay,#howtoOverlay{position:absolute;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
+    background:rgba(8,10,20,.72);backdrop-filter:blur(2px);padding:20px;}
+  #pauseOverlay.show,#howtoOverlay.show{display:flex;}
   .pauseCard{background:rgba(26,33,64,.95);border:1px solid var(--line);border-radius:16px;
-    padding:26px 30px;text-align:center;}
+    padding:26px 30px;text-align:center;max-width:340px;}
   .pauseCard h2{font-size:18px;margin-bottom:14px;letter-spacing:.06em;}
 
   /* ===== 結果 ===== */
@@ -119,13 +119,21 @@
   <section id="title" class="screen active">
     <div class="mochiLogo">もち<br>ジャンプ</div>
     <div class="sub">MOCHI JUMP</div>
-    <div class="rule">
-      ← → で移動、ジャンプボタン(または スペース / ↑)で跳ぶ。<br>
-      押しっぱなしで高くジャンプできる。落とし穴に落ちても大丈夫、<br>
-      少し戻ってやり直せる。ゴールの臼(うす)を目指そう。
-    </div>
     <button class="btn" id="titleStartBtn">はじめる</button>
+    <button class="btn ghost" id="howtoBtn">あそびかた</button>
     <div id="playCountLabel"></div>
+
+    <div id="howtoOverlay">
+      <div class="pauseCard">
+        <h2>あそびかた</h2>
+        <div class="rule">
+          <p>← → で移動、ジャンプボタン（またはスペース／↑）でジャンプします。押しっぱなしで高くジャンプできます。</p>
+          <p>落とし穴に落ちても大丈夫。少し手前からやり直せます。</p>
+          <p>ゴールの臼（うす）を目指しましょう。</p>
+        </div>
+        <button class="btn ghost" id="howtoCloseBtn">とじる</button>
+      </div>
+    </div>
   </section>
 
   <!-- ================= ステージ選択 ================= -->
@@ -937,6 +945,8 @@
   }
 
   $("titleStartBtn").addEventListener("click", function(){ paintStageList(); show("select"); });
+  $("howtoBtn").addEventListener("click", function(){ $("howtoOverlay").classList.add("show"); });
+  $("howtoCloseBtn").addEventListener("click", function(){ $("howtoOverlay").classList.remove("show"); });
   $("selectBackBtn").addEventListener("click", function(){ show("title"); });
   $("nextStageBtn").addEventListener("click", function(){ startGame(currentLevel + 1); });
   $("retryBtn").addEventListener("click", function(){ startGame(currentLevel); });
