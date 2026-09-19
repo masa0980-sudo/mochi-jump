@@ -81,6 +81,9 @@
   #touchBar{position:relative;display:flex;justify-content:space-between;align-items:center;
     width:100%;max-width:480px;padding:0 20px;pointer-events:none;z-index:6;flex:none;}
   .padGroup{display:flex;gap:10px;pointer-events:auto;}
+  /* touch-action:none — 押したまま指が少し動いてもブラウザのパン判定で
+     pointercancel が飛んでボタンが離れた扱いにならないようにする */
+  .padBtn,#jumpBtn{touch-action:none;-webkit-touch-callout:none;}
   .padBtn{width:60px;height:60px;border-radius:18px;background:rgba(255,255,255,.1);
     border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
     font-size:24px;color:var(--text);backdrop-filter:blur(2px);}
@@ -429,10 +432,16 @@
     window.addEventListener("keyup", function(e){ up(e.key); });
 
     function bindHold(el, onDown, onUp){
-      el.addEventListener("pointerdown", function(e){ e.preventDefault(); onDown(); });
+      el.addEventListener("pointerdown", function(e){
+        e.preventDefault();
+        // 指をボタンに固定し、押したまま少しずれても pointerleave で離れた扱いにしない
+        try { el.setPointerCapture(e.pointerId); } catch (err) {}
+        onDown();
+      });
       el.addEventListener("pointerup", onUp);
-      el.addEventListener("pointerleave", onUp);
       el.addEventListener("pointercancel", onUp);
+      el.addEventListener("lostpointercapture", onUp);
+      el.addEventListener("contextmenu", function(e){ e.preventDefault(); });
     }
     bindHold($("leftBtn"), ()=>{ state.left = true; }, ()=>{ state.left = false; });
     bindHold($("rightBtn"), ()=>{ state.right = true; }, ()=>{ state.right = false; });
