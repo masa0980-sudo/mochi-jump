@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>もちジャンプ</title>
+<script>if(/[?&]mini=1(&|$)/.test(location.search)) document.documentElement.classList.add("mini");</script>
 <style>
+  /* ミニ版(?mini=1。mini-medley の iframe から呼ばれる)では、タイトル・一時停止を出さない */
+  .mini #title,.mini #pauseBtn{display:none !important;}
   :root{
     --bg0:#0c0f1a; --bg1:#1a2140;
     --accent:#ffb37a; --accent2:#ff8fb3;
@@ -195,13 +198,25 @@
 (function(){
   "use strict";
   const $ = id => document.getElementById(id);
+  /* ミニ版(mini-medley 用)。?mini=1&sec=<秒>&mute=<0|1>。仕様は mini-medley/CLAUDE.md */
+  const Q = new URLSearchParams(location.search);
+  const MINI = Q.get("mini") === "1";
+  const MINI_SEC = Math.max(5, parseFloat(Q.get("sec")) || 20);
+  let miniMaxX = 0, miniDone = false, miniTimer = null, miniEndAt = 0;
 
   /* =========================================================
      1. Sfx — Web Audio APIで効果音を合成する(音声ファイル不使用)
      ========================================================= */
   const Sfx = (function(){
-    let ac = null;
-    function ensure(){ if(!ac){ const AC = window.AudioContext || window.webkitAudioContext; ac = new AC(); } if(ac.state === "suspended") ac.resume(); }
+    let ac = null, master = null;
+    const muted = MINI && Q.get("mute") === "1";
+    function ensure(){
+      if(!ac){
+        const AC = window.AudioContext || window.webkitAudioContext; ac = new AC();
+        master = ac.createGain(); master.gain.value = muted ? 0 : 1; master.connect(ac.destination);
+      }
+      if(ac.state === "suspended") ac.resume();
+    }
     function tone(freq, dur, type, gain, glideTo){
       if(!ac) return;
       const t0 = ac.currentTime;
@@ -213,7 +228,7 @@
       g.gain.setValueAtTime(0, t0);
       g.gain.linearRampToValueAtTime(gain || 0.18, t0 + 0.01);
       g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-      osc.connect(g); g.connect(ac.destination);
+      osc.connect(g); g.connect(master);
       osc.start(t0); osc.stop(t0 + dur + 0.02);
     }
     /* ===== BGM(ポップで少し重厚な和音入りのループ。tennis-game/neon-void と同じ
@@ -258,7 +273,7 @@
 
     function setupBgmBus(){
       if (!ac || busGain) return;
-      busGain = ac.createGain(); busGain.gain.value = 0.5; busGain.connect(ac.destination);
+      busGain = ac.createGain(); busGain.gain.value = 0.5; busGain.connect(master);
       bgmDelay = ac.createDelay(1.0); bgmDelayFb = ac.createGain(); bgmDelayWet = ac.createGain();
       bgmDelay.delayTime.value = 0.34; bgmDelayFb.gain.value = 0.22; bgmDelayWet.gain.value = 0.13;
       bgmDelay.connect(bgmDelayFb); bgmDelayFb.connect(bgmDelay);
@@ -773,15 +788,17 @@
     // --- squash(着地演出)の減衰 ---
     if(player.squash > 0) player.squash = Math.max(0, player.squash - 0.6 * t);
 
+    if(MINI && !player.dead) miniMaxX = Math.max(miniMaxX, player.x);
     // --- ゴール判定 ---
     if(player.x + player.w/2 > GOAL_X && !ended){
       ended = true; running = false;
       Sfx.clear();
-      showResult(true);
+      if(MINI) endMini("clear"); else showResult(true);
     }
 
     updateCamera();
-    $("hudTime").textContent = ((performance.now() - startedAt) / 1000).toFixed(1);
+    $("hudTime").textContent = MINI ? Math.max(0, (miniEndAt - performance.now()) / 1000).toFixed(1)
+                                    : ((performance.now() - startedAt) / 1000).toFixed(1);
   }
 
   function updateCamera(){
@@ -924,6 +941,33 @@
     });
   }
 
+  /* ===== ミニ版(mini-medley から呼ばれる) =====
+     ステージ1だけ。読み込み → 待機 → ハブの mini-go で開始 → sec 秒かゴールで mini-result を返す。
+     PlayCounts・クリア記録は書かない。点数: ゴールで100、それ以外は 進んだ距離75% + きなこ25%。 */
+  function miniBoot(){
+    loadLevel(0); show("play"); fitCanvas(); initGame();
+    running = false;                                   // 合図が来るまで動かさない
+    $("hudTime").textContent = MINI_SEC.toFixed(1);
+    if(!rafId) rafId = requestAnimationFrame(loop);
+    window.addEventListener("message", function(e){ if(e.source === window.parent && e.data && e.data.type === "mini-go") miniGo(); });
+    window.parent.postMessage({ type: "mini-ready", game: "mochi-jump" }, "*");
+    if(window.parent === window) setTimeout(miniGo, 300);   // 単独で ?mini=1 を開いたとき(デバッグ用)は自動で始める
+  }
+  function miniGo(){
+    if(running || miniDone) return;
+    startedAt = performance.now(); miniEndAt = startedAt + MINI_SEC * 1000; lastT = startedAt; running = true;
+    Sfx.ensure(); Sfx.startBgm();
+    miniTimer = setInterval(function(){ if(performance.now() >= miniEndAt) endMini("time"); }, 100);
+  }
+  function endMini(reason){
+    if(miniDone) return; miniDone = true;
+    clearInterval(miniTimer); ended = true; running = false;
+    Sfx.stopBgm();
+    const prog = Math.min(1, miniMaxX / GOAL_X), cr = coins.length ? coinCount / coins.length : 0;
+    const score = reason === "clear" ? 100 : Math.min(99, Math.round(100 * (0.75 * prog + 0.25 * cr)));
+    window.parent.postMessage({ type: "mini-result", game: "mochi-jump", score: score,
+      detail: { progress: Math.round(prog * 100), coins: coinCount, coinsMax: coins.length, reason: reason } }, "*");
+  }
   function startGame(levelIndex){
     Sfx.ensure();
     Sfx.startBgm();
@@ -987,7 +1031,7 @@
     show("title");
   });
   document.addEventListener("visibilitychange", function(){
-    if(document.hidden && running && !ended && !paused){
+    if(!MINI && document.hidden && running && !ended && !paused){
       paused = true; $("pauseOverlay").classList.add("show");
       Sfx.stopBgm();
     }
@@ -995,9 +1039,10 @@
   window.addEventListener("pagehide", function(){ Sfx.stopBgm(); });
 
   fitCanvas();
+  if(MINI) miniBoot();
 
   // 累計プレイ回数の表示。取れなければ空欄のまま静かに諦める(体感速度には影響させない)。
-  PlayCounts.fetchCount("mochi-jump").then(function(count){
+  if(!MINI) PlayCounts.fetchCount("mochi-jump").then(function(count){
     if(count != null) $("playCountLabel").textContent = "これまでに " + count + " 回プレイされています";
   });
 
@@ -1016,6 +1061,7 @@
     pits: function(){ return pits; },
     movers: function(){ return movers; },
     isEnded: function(){ return ended; },
+    mini: MINI,
     currentLevel: function(){ return currentLevel; },
     levels: LEVELS,
     startGame: startGame,

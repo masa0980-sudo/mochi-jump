@@ -170,6 +170,23 @@ clear time shown on the result screen. Adding a fourth stage means appending to 
 the reach table above) — `paintStageList()`, `Progress`, and `startGame()` all already generalize
 over `LEVELS.length` and need no changes for additional stages.
 
+## Mini mode (`?mini=1`, called from mini-medley)
+
+The hub in `C:\claude\repos\mini-medley` opens this page in an iframe with `?mini=1&sec=20&mute=0|1`.
+**The protocol is specified in mini-medley's CLAUDE.md**; this section only records mochi-jump's side.
+Without `mini=1` everything behaves exactly as before.
+
+- A one-line `<head>` script adds `<html class="mini">` before first paint; CSS hides `#title` and `#pauseBtn`.
+- Flow: `miniBoot()` (stage 1 only; draws the start position and waits, `running=false`, posts `mini-ready`)
+  → hub's `mini-go` → `miniGo()` (starts BGM and the clock) → `endMini()` posts `mini-result` on the goal or after `sec`.
+  `#hudTime` counts **down** in mini mode (it counts up normally).
+- Score: reaching the goal = 100. Otherwise `min(99, 75% × (furthest x / GOAL_X) + 25% × (きなこ taken / total))`.
+  The furthest x is tracked in `miniMaxX`, so falling into a pit and respawning does not lose progress.
+- Mini mode writes nothing: no `PlayCounts`, no `Progress.markCleared`. Sound goes through one `master` gain
+  (`mute=1` → 0). **New sounds must connect to `master`, not `ac.destination`.**
+- The auto-pause on `visibilitychange` is disabled in mini mode (the clock is wall-time, so pausing would not stop it).
+- Standalone check: opening `?mini=1&sec=5` directly auto-starts after 300 ms (`window.parent === window`).
+
 ## Art
 
 `art/keyart.png` (title screen, set as `#title`'s CSS `background`, dimmed with a `#title::before`
